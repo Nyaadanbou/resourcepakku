@@ -1,6 +1,13 @@
 package cc.mewcraft.nekorp
 
+import cc.mewcraft.nekorp.event.NekoRpReloadEvent
+import cc.mewcraft.nekorp.util.listen
+import cc.mewcraft.nekorp.util.plugin
 import cc.mewcraft.nekorp.util.reloadable
+import com.google.common.collect.LinkedHashMultimap
+import com.google.common.collect.Multimap
+import com.google.common.collect.Multimaps
+import com.google.common.hash.HashCode
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.spongepowered.configurate.ConfigurationNode
@@ -8,87 +15,105 @@ import org.spongepowered.configurate.kotlin.extensions.get
 import org.spongepowered.configurate.yaml.NodeStyle
 import org.spongepowered.configurate.yaml.YamlConfigurationLoader
 import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
+import kotlin.io.path.outputStream
 
 private const val CONFIG_FILE_NAME = "config.yml"
 
-data class ServerConfig(
-    /* OSS Settings */
+data class PackConfig(
+    val configPackName: String,
+    /* OSS Path Settings */
+    val bucketName: String,
     val packPrefix: String,
-    val packName: String,
-    val packHash: String,
-    /* ResourcePack Settings */
-    val prompt: Component,
-    val force: Boolean,
+    val packPathName: String,
+    val packHash: String?,
 )
 
 class NekoRpConfig(
-    private val dataDirectory: Path,
+    dataDirectory: Path,
 ) {
     private val path = dataDirectory.resolve(CONFIG_FILE_NAME)
-    private val loader: YamlConfigurationLoader = YamlConfigurationLoader.builder()
-        .path(path)
-        .nodeStyle(NodeStyle.BLOCK)
-        .build()
+    private val loader: YamlConfigurationLoader by reloadable {
+        YamlConfigurationLoader.builder()
+            .path(path)
+            .nodeStyle(NodeStyle.BLOCK)
+            .build()
+    }
 
     // Key: Server Name
-    // Val: Server Config
-    private val serverConfigMap: MutableMap<String, ServerConfig> = ConcurrentHashMap()
-
-    fun getServerConfig(serverName: String): ServerConfig {
-        return serverConfigMap[serverName] ?: requireNotNull(serverConfigMap["default"])
-    }
+    // Val: Pack Name
+    private val serverPackMap: Multimap<String, PackConfig> = Multimaps.synchronizedSetMultimap(LinkedHashMultimap.create())
 
     private val root: ConfigurationNode by reloadable { loader.load() }
 
+    private val ossNode: ConfigurationNode
+        get() = root.node("oss")
+    private val resourcePackNode: ConfigurationNode
+        get() = root.node("resource_pack")
+    private val serverNode: ConfigurationNode
+        get() = root.node("servers")
+    private val packNode: ConfigurationNode
+        get() = root.node("packs")
+    private val defaultServerNode: ConfigurationNode
+        get() = root.node("server_default")
+
+    init {
+        plugin.listen<NekoRpReloadEvent> { onReload() }
+    }
+
     fun onReload() {
-        serverConfigMap.clear()
+        serverPackMap.clear()
         if (!path.exists()) {
             initConfig()
         }
 
-        root.node("servers").childrenMap().forEach { (serverName, serverNode) ->
-            serverConfigMap[serverName.toString()] = createServerConfig(serverNode)
+        serverNode.childrenMap().forEach { (serverName, serverNode) ->
+            serverPackMap.putAll(serverName.toString(), createServerPackConfig(serverNode))
         }
     }
 
-    val endpoint: String by reloadable { root.node("oss", "endpoint").requireKt<String>() }
-    val accessKeyId: String by reloadable { root.node("oss", "access_key_id").requireKt<String>() }
-    val accessKeySecret: String by reloadable { root.node("oss", "access_key_secret").requireKt<String>() }
-    val bucketName: String by reloadable { root.node("oss", "bucket_name").requireKt<String>() }
-    val expireSeconds: Long by reloadable { root.node("oss", "expire_seconds").requireKt<Long>() }
+    val endpoint: String by reloadable { ossNode.node("endpoint").requireKt<String>() }
+    val accessKeyId: String by reloadable { ossNode.node("access_key_id").requireKt<String>() }
+    val accessKeySecret: String by reloadable { ossNode.node("access_key_secret").requireKt<String>() }
+    val expireSeconds: Long by reloadable { ossNode.node("expire_seconds").requireKt<Long>() }
 
-    private fun initConfig() {
-        dataDirectory.toFile().mkdir()
-        val root = loader.createNode()
-        // OSS Settings
-        root.node("oss", "endpoint").set("oss-cn-hangzhou.aliyuncs.com")
-        root.node("oss", "access_key_id").set("accessKeyId")
-        root.node("oss", "access_key_secret").set("accessKeySecret")
-        root.node("oss", "bucket_name").set("nekorp")
-        root.node("oss", "expire_seconds").set(1800L)
+    /* ResourcePack Settings */
+    val limitSeconds: Long by reloadable { resourcePackNode.node("limit_seconds").requireKt<Long>() }
+    val prompt: Component by reloadable { MiniMessage.miniMessage().deserialize(resourcePackNode.node("prompt").requireKt()) }
+    val force: Boolean by reloadable { resourcePackNode.node("force").requireKt<Boolean>() }
 
-        val serverNode = root.node("servers")
-        val defaultNode = serverNode.node("default")
-        defaultNode.node("oss", "pack_prefix").set("assets/packs/")
-        defaultNode.node("oss", "pack_name").set("pack.zip")
-        defaultNode.node("oss", "pack_hash").set("checksum.txt")
+    private val defaultServerSettings: List<PackConfig> by reloadable { createServerPackConfig(defaultServerNode) }
 
-        // ResourcePack Settings
-        defaultNode.node("resource_pack", "prompt").set("<yellow>Rewrite the prompt here.")
-        defaultNode.node("resource_pack", "force").set(false)
+    fun getServerPacks(serverName: String): List<PackConfig> {
+        if (!serverPackMap.containsKey(serverName))
+            return defaultServerSettings
+        return serverPackMap[serverName].toList()
+    }
 
+    fun setPackHash(packName: String, hashCode: HashCode) {
+        packNode.node(packName, "oss_path", "pack_hash").set(hashCode.toString())
         loader.save(root)
     }
 
-    private fun createServerConfig(node: ConfigurationNode): ServerConfig {
-        return ServerConfig(
-            packPrefix = node.node("oss", "pack_prefix").requireKt(),
-            packName = node.node("oss", "pack_name").requireKt(),
-            packHash = node.node("oss", "pack_hash").requireKt(),
-            prompt = MiniMessage.miniMessage().deserialize(node.node("resource_pack", "prompt").requireKt()),
-            force = node.node("resource_pack", "force").requireKt(),
+    private fun initConfig() {
+        plugin.javaClass.getResourceAsStream("/$CONFIG_FILE_NAME")?.buffered()?.use {
+            it.copyTo(path.outputStream().buffered())
+        }
+    }
+
+    private fun createServerPackConfig(serverNode: ConfigurationNode): List<PackConfig> {
+        val packNames = serverNode.requireKt<List<String>>()
+        return packNames.map { packNode.node(it) }
+            .map { createPackConfig(it.key().toString(), it) }
+    }
+
+    private fun createPackConfig(nodeName: String, node: ConfigurationNode): PackConfig {
+        return PackConfig(
+            configPackName = nodeName,
+            bucketName = node.node("oss_path", "bucket_name").requireKt(),
+            packPrefix = node.node("oss_path", "pack_prefix").requireKt(),
+            packPathName = node.node("oss_path", "pack_name").requireKt(),
+            packHash = node.node("oss_path", "pack_hash").get<String>()?.takeIf { it.isNotBlank() }
         )
     }
 }

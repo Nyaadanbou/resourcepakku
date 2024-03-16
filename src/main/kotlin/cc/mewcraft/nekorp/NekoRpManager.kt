@@ -4,6 +4,7 @@ package cc.mewcraft.nekorp
 
 import cc.mewcraft.nekorp.util.plugin
 import com.aliyun.oss.HttpMethod
+import com.aliyun.oss.OSSException
 import com.aliyun.oss.model.GeneratePresignedUrlRequest
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
@@ -16,52 +17,46 @@ import java.util.*
 
 data class PackData(
     val downloadUrl: URL,
-    val hash: HashCode,
+    /**
+     * 此文件的 SHA-1 值
+     *
+     * @return null 代表未提供哈希
+     */
+    val hash: HashCode?,
 )
 
 data class PackDataKey(
     val uuid: UUID,
     val inetAddress: InetAddress,
-    val serverConfig: ServerConfig
+    val packConfig: PackConfig,
 )
 
 class NekoRpManager(
-    private val config: NekoRpConfig,
+    config: NekoRpConfig,
 ) {
     private val requester: OSSRequester = plugin.ossRequester
     private val expireSeconds: Long = config.expireSeconds
+    private val limitSeconds: Long = config.limitSeconds
 
     // Row: UUID
     // Col: Player IP
     // Val: Download URL
-    private val packDataCache: LoadingCache<PackDataKey, PackData> = Caffeine.newBuilder()
-        .expireAfterWrite(Duration.ofSeconds(expireSeconds))
-        .build { key -> getPackDownloadAddress(key.serverConfig) }
+    private val packDataLimitCache: LoadingCache<PackDataKey, PackData> = Caffeine.newBuilder()
+        .expireAfterWrite(Duration.ofSeconds(limitSeconds))
+        .build { key -> getPackDownloadAddress(key.packConfig) }
 
-    private var oldPackData: PackData? = null
-        set(value) {
-            if (value == null)
-                return
-            if (field == null) {
-                field = value
-                return
-            }
-
-            if (field!! != value) {
-                packDataCache.invalidateAll()
-            }
+    fun getPackData(uniqueId: UUID, playerIp: InetAddress, packConfig: PackConfig): PackData? {
+        return try {
+            packDataLimitCache[PackDataKey(uniqueId, playerIp, packConfig)]
+        } catch (e: OSSException) {
+            null
         }
-
-    private val bucketName: String
-        get() = config.bucketName
-
-    fun getPackData(uniqueId: UUID, playerIp: InetAddress, serverConfig: ServerConfig): PackData {
-        return packDataCache[PackDataKey(uniqueId, playerIp, serverConfig)]
     }
 
-    private fun getPackDownloadAddress(serverConfig: ServerConfig): PackData {
+    private fun getPackDownloadAddress(packConfig: PackConfig): PackData {
+        val bucketName = packConfig.bucketName
         val generatedLink = requester.useClient {
-            val objectName = "${serverConfig.packPrefix}${serverConfig.packName}"
+            val objectName = "${packConfig.packPrefix}${packConfig.packPathName}"
             val objectMetadata = getObjectMetadata(bucketName, objectName)
             if (objectMetadata.contentType != "application/zip") {
                 throw IllegalStateException("Pack file is not a zip file")
@@ -74,8 +69,19 @@ class NekoRpManager(
             generatePresignedUrl(request)
         }
 
-        val hash = requester.useClient {
-            val objectName = "${serverConfig.packPrefix}${serverConfig.packHash}"
+        val packHashString = packConfig.packHash
+        val hash = runCatching { packHashString?.let { HashCode.fromString(it) } }
+            .getOrNull() ?: getHashFromOSS(packHashString, packConfig.packPrefix, bucketName)
+
+        val result = PackData(generatedLink, hash)
+
+        return result
+    }
+
+    private fun getHashFromOSS(packHash: String?, packPrefix: String, bucketName: String): HashCode? {
+        packHash ?: return null
+        return requester.useClient {
+            val objectName = "${packPrefix}$packHash"
             val fileObject = getObject(bucketName, objectName)
             if (fileObject.objectMetadata.contentType != "text/plain") {
                 throw IllegalStateException("Checksum file is not a text file")
@@ -85,15 +91,10 @@ class NekoRpManager(
             val text = objectContent.bufferedReader().use { it.readText() }
             HashCode.fromString(text)
         }
-
-        val result = PackData(generatedLink, hash)
-        oldPackData = result
-
-        return result
     }
 
     fun onDisable() {
-        packDataCache.invalidateAll()
+        packDataLimitCache.invalidateAll()
         requester.close()
     }
 }

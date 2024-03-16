@@ -2,6 +2,8 @@ package cc.mewcraft.nekorp;
 
 import cc.mewcraft.nekorp.command.MainCommand;
 import cc.mewcraft.nekorp.event.NekoRpReloadEvent;
+import com.google.common.collect.Lists;
+import com.google.common.hash.HashCode;
 import com.google.inject.Inject;
 import com.velocitypowered.api.event.EventHandler;
 import com.velocitypowered.api.event.EventTask;
@@ -14,10 +16,19 @@ import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
-import com.velocitypowered.api.proxy.player.ResourcePackInfo;
+import net.kyori.adventure.resource.ResourcePackInfo;
+import net.kyori.adventure.resource.ResourcePackInfoLike;
+import net.kyori.adventure.resource.ResourcePackRequest;
+import net.kyori.adventure.resource.ResourcePackRequestLike;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.net.InetAddress;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 @Plugin(id = "nekorp", name = "NekoRp", version = "1.0.0", dependencies = {@Dependency(id = "kotlin")}, authors = {"g2213swo"})
 public class NekoRp {
@@ -55,32 +66,64 @@ public class NekoRp {
     }
 
     @Subscribe
-    private EventTask onLogin(ServerConnectedEvent event) {
+    private @Nullable EventTask onLogin(ServerConnectedEvent event) {
         Player player = event.getPlayer();
         String currentServer = event.getServer().getServerInfo().getName();
-        ServerConfig serverConfig = config.getServerConfig(currentServer);
 
-        // 延迟发送，否则会被覆盖
+        //<editor-fold desc="Packs">
+        List<PackConfig> currentServerConfigs = config.getServerPacks(currentServer);
+        if (currentServerConfigs.isEmpty())
+            return null;
+        //</editor-fold>
+
         return EventTask.async(() -> {
-            PackData result = nekoRpManager.getPackData(
-                    player.getUniqueId(),
-                    player.getRemoteAddress().getAddress(),
-                    serverConfig
-            );
-            String url = result.getDownloadUrl().toString();
+            // Get the packs that need to be applied
+            List<ResourcePackInfoLike> applyPacks = currentServerConfigs.stream()
+                    .map(packConfig -> {
+                        UUID resourcePackId = UUID.nameUUIDFromBytes(packConfig.getPackPathName().getBytes());
+                        return getResourcePackInfo(resourcePackId, player.getUniqueId(), player.getRemoteAddress().getAddress(), packConfig);
+                    })
+                    .filter(Objects::nonNull)
+                    .toList();
 
-            ResourcePackInfo resourcePackInfo = server.createResourcePackBuilder(url)
-                    .setHash(result.getHash().asBytes())
-                    .setPrompt(serverConfig.getPrompt())
-                    .setShouldForce(serverConfig.getForce())
-                    .build();
-            player.sendResourcePackOffer(resourcePackInfo);
+            // Create the request
+            ResourcePackRequestLike request = ResourcePackRequest.resourcePackRequest()
+                    // Reverse the list to apply the packs in the correct order
+                    // Minecraft applies the packs in reverse order
+                    .packs(Lists.reverse(applyPacks))
+                    .prompt(config.getPrompt())
+                    .required(config.getForce())
+                    .replace(false);
+
+            // Clear the current packs and send the new ones
+            player.clearResourcePacks();
+            player.sendResourcePacks(request);
         });
     }
 
-    @Subscribe
-    private void onReload(NekoRpReloadEvent event) {
-        config.onReload();
+    private @Nullable ResourcePackInfoLike getResourcePackInfo(UUID resourcePackUniqueId, UUID playerUniqueId, InetAddress address, PackConfig packConfig) {
+        PackData result = nekoRpManager.getPackData(playerUniqueId, address, packConfig);
+        if (result == null) {
+            logger.error("Failed to get pack data, please check your configuration. Pack: {}", packConfig.getConfigPackName());
+            return null;
+        }
+        try {
+            HashCode hash = result.getHash();
+            ResourcePackInfo info;
+            ResourcePackInfo.Builder builder = ResourcePackInfo.resourcePackInfo()
+                    .id(resourcePackUniqueId)
+                    .uri(result.getDownloadUrl().toURI());
+            if (hash != null) {
+                info = builder.hash(hash.toString()).build();
+            } else {
+                info = builder.computeHashAndBuild().join();
+                config.setPackHash(packConfig.getConfigPackName(), HashCode.fromString(info.hash()));
+            }
+            return info;
+        } catch (URISyntaxException e) {
+            logger.error("Failed to parse URI", e);
+        }
+        return null;
     }
 
     public <T> void listen(Class<T> eventType, PostOrder order, EventHandler<T> action) {
