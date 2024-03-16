@@ -2,48 +2,42 @@
 
 package cc.mewcraft.nekorp
 
+import cc.mewcraft.nekorp.util.plugin
 import com.aliyun.oss.HttpMethod
 import com.aliyun.oss.model.GeneratePresignedUrlRequest
-import com.google.common.collect.HashBasedTable
-import com.google.common.collect.Table
-import com.google.common.collect.Tables
+import com.github.benmanes.caffeine.cache.Caffeine
+import com.github.benmanes.caffeine.cache.LoadingCache
 import com.google.common.hash.HashCode
-import org.slf4j.Logger
+import java.net.InetAddress
+import java.net.URL
+import java.time.Duration
+import java.time.Instant
 import java.util.*
 
 data class PackData(
-    val downloadLink: String,
-    val hash: ByteArray?,
-) {
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
+    val downloadUrl: URL,
+    val hash: HashCode,
+)
 
-        other as PackData
-
-        if (downloadLink != other.downloadLink) return false
-        if (hash != null) {
-            if (other.hash == null) return false
-            if (!hash.contentEquals(other.hash)) return false
-        } else if (other.hash != null) return false
-
-        return true
-    }
-
-    override fun hashCode(): Int {
-        var result = downloadLink.hashCode()
-        result = 31 * result + (hash?.contentHashCode() ?: 0)
-        return result
-    }
-}
+data class PackDataKey(
+    val uuid: UUID,
+    val inetAddress: InetAddress,
+    val serverConfig: ServerConfig
+)
 
 class NekoRpManager(
     private val config: NekoRpConfig,
-    private val requester: OSSRequester,
-    private val logger: Logger,
 ) {
-    // Key: UUID, Row: Player IP, Value: Download Link
-    private val downloadLinkTable: Table<UUID, String, PackData> = Tables.synchronizedTable(HashBasedTable.create())
+    private val requester: OSSRequester = plugin.ossRequester
+    private val expireSeconds: Long = config.expireSeconds
+
+    // Row: UUID
+    // Col: Player IP
+    // Val: Download URL
+    private val packDataCache: LoadingCache<PackDataKey, PackData> = Caffeine.newBuilder()
+        .expireAfterWrite(Duration.ofSeconds(expireSeconds))
+        .build { key -> getPackDownloadAddress(key.serverConfig) }
+
     private var oldPackData: PackData? = null
         set(value) {
             if (value == null)
@@ -53,41 +47,35 @@ class NekoRpManager(
                 return
             }
 
-            if (field!!.hash.contentEquals(value.hash)) {
-                downloadLinkTable.clear()
+            if (field!! != value) {
+                packDataCache.invalidateAll()
             }
         }
 
     private val bucketName: String
         get() = config.bucketName
-    private val packPrefix: String
-        get() = config.packPrefix
-    private val packName: String
-        get() = config.packName
-    private val packHash: String
-        get() = config.packHash
 
-    fun getPackDownloadAddress(uniqueId: UUID, playerIp: String): PackData {
-        if (downloadLinkTable.contains(uniqueId, playerIp)) {
-            return downloadLinkTable.get(uniqueId, playerIp)!!
-        }
+    fun getPackData(uniqueId: UUID, playerIp: InetAddress, serverConfig: ServerConfig): PackData {
+        return packDataCache[PackDataKey(uniqueId, playerIp, serverConfig)]
+    }
 
+    private fun getPackDownloadAddress(serverConfig: ServerConfig): PackData {
         val generatedLink = requester.useClient {
-            val objectName = "${packPrefix}${packName}"
+            val objectName = "${serverConfig.packPrefix}${serverConfig.packName}"
             val objectMetadata = getObjectMetadata(bucketName, objectName)
             if (objectMetadata.contentType != "application/zip") {
                 throw IllegalStateException("Pack file is not a zip file")
             }
-            val request = GeneratePresignedUrlRequest(bucketName, objectName, HttpMethod.GET)
-                .apply {
-                    // Set the expiration time of the URL to 30 minutes from now
-                    expiration = Date(System.currentTimeMillis() + 1 * 60 * 1000)
-                }
+            val request = GeneratePresignedUrlRequest(bucketName, objectName, HttpMethod.GET).apply {
+                // Set the expiration time of the URL to 30 minutes from now
+                val expire = Instant.now().plus(Duration.ofSeconds(expireSeconds))
+                expiration = Date(expire.toEpochMilli())
+            }
             generatePresignedUrl(request)
         }
 
         val hash = requester.useClient {
-            val objectName = "${packPrefix}${packHash}"
+            val objectName = "${serverConfig.packPrefix}${serverConfig.packHash}"
             val fileObject = getObject(bucketName, objectName)
             if (fileObject.objectMetadata.contentType != "text/plain") {
                 throw IllegalStateException("Checksum file is not a text file")
@@ -98,16 +86,14 @@ class NekoRpManager(
             HashCode.fromString(text)
         }
 
-        val result = PackData(generatedLink.toString(), hash.asBytes())
-        downloadLinkTable.put(uniqueId, playerIp, result)
+        val result = PackData(generatedLink, hash)
         oldPackData = result
 
         return result
-            .also { logger.info("Generated download link for $uniqueId ($playerIp): $it") }
     }
 
     fun onDisable() {
-        downloadLinkTable.clear()
+        packDataCache.invalidateAll()
         requester.close()
     }
 }

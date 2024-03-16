@@ -1,5 +1,6 @@
 package cc.mewcraft.nekorp.util
 
+import cc.mewcraft.nekorp.event.NekoRpReloadEvent
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
@@ -9,7 +10,7 @@ class Reloadable<T>(private val loader: () -> T) : ReadOnlyProperty<Any?, T> {
     private var value: T? = null
 
     init {
-        // plugin.listen<TypewriterReloadEvent> { reload() }
+        plugin.listen<NekoRpReloadEvent> { reload() }
     }
 
     fun get(): T {
