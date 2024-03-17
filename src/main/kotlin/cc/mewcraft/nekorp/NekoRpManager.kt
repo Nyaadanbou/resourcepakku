@@ -8,12 +8,14 @@ import com.aliyun.oss.OSSException
 import com.aliyun.oss.model.GeneratePresignedUrlRequest
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
+import com.github.benmanes.caffeine.cache.RemovalCause
 import com.google.common.hash.HashCode
+import org.slf4j.Logger
 import java.net.InetAddress
 import java.net.URL
-import java.time.Duration
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 data class PackData(
     val downloadUrl: URL,
@@ -32,27 +34,56 @@ data class PackDataKey(
 )
 
 class NekoRpManager(
+    private val logger: Logger,
     config: NekoRpConfig,
 ) {
     private val requester: OSSRequester = plugin.ossRequester
     private val expireSeconds: Long = config.expireSeconds
     private val limitSeconds: Long = config.limitSeconds
 
-    // Row: UUID
-    // Col: Player IP
-    // Val: Download URL
     private val packDataLimitCache: LoadingCache<PackDataKey, PackData> = Caffeine.newBuilder()
-        .expireAfterWrite(Duration.ofSeconds(limitSeconds))
-        .build { key -> getPackDownloadAddress(key.packConfig) }
-
-    fun getPackData(uniqueId: UUID, playerIp: InetAddress, packConfig: PackConfig): PackData? {
-        return try {
-            packDataLimitCache[PackDataKey(uniqueId, playerIp, packConfig)]
-        } catch (e: OSSException) {
-            null
+        .expireAfterWrite(limitSeconds, TimeUnit.SECONDS)
+        .removalListener<PackDataKey, PackData> { key, _, cause ->
+            if (cause == RemovalCause.EXPIRED) {
+                logger.info("Removed expired pack data for player uuid ${key?.uuid}. Pack: ${key?.packConfig?.configPackName}")
+            }
         }
+        .build { key ->
+            getPackDownloadAddress(key.packConfig).also {
+                logger.info("Successfully generated download link ${it.downloadUrl} for ${key.uuid}. IP: ${key.inetAddress}. Pack: ${key.packConfig.configPackName}")
+            }
+        }
+
+    /**
+     * 获取玩家的资源包下载地址。
+     *
+     * @param uniqueId 玩家的 UUID。
+     * @param playerIp 玩家的 IP 地址。
+     * @param packConfig 资源包配置。
+     *
+     * @return 资源包下载地址， 或 null 如果无法获取。
+     */
+    fun getPackData(uniqueId: UUID, playerIp: InetAddress, packConfig: PackConfig): PackData? {
+        return packDataLimitCache[PackDataKey(uniqueId, playerIp, packConfig)]
     }
 
+    /**
+     * 当资源包下载失败时调用。
+     *
+     * 将会移除现存的限制。
+     *
+     * @param uniqueId 玩家的 UUID。
+     */
+    fun onFailedDownload(uniqueId: UUID, playerIp: InetAddress, packConfig: PackConfig) {
+        packDataLimitCache.invalidate(PackDataKey(uniqueId, playerIp, packConfig))
+    }
+
+    /**
+     * 获取资源包的下载地址。
+     *
+     * @param packConfig 资源包配置。
+     * @throws OSSException 如果无法获取资源包下载地址。
+     */
     private fun getPackDownloadAddress(packConfig: PackConfig): PackData {
         val bucketName = packConfig.bucketName
         val generatedLink = requester.useClient {
@@ -63,34 +94,14 @@ class NekoRpManager(
             }
             val request = GeneratePresignedUrlRequest(bucketName, objectName, HttpMethod.GET).apply {
                 // Set the expiration time of the URL to 30 minutes from now
-                val expire = Instant.now().plus(Duration.ofSeconds(expireSeconds))
-                expiration = Date(expire.toEpochMilli())
+                expiration = Date.from(Instant.now().plusSeconds(expireSeconds))
             }
             generatePresignedUrl(request)
         }
-
-        val packHashString = packConfig.packHash
-        val hash = runCatching { packHashString?.let { HashCode.fromString(it) } }
-            .getOrNull() ?: getHashFromOSS(packHashString, packConfig.packPrefix, bucketName)
-
+        val hash = packConfig.packHashCode()
         val result = PackData(generatedLink, hash)
 
         return result
-    }
-
-    private fun getHashFromOSS(packHash: String?, packPrefix: String, bucketName: String): HashCode? {
-        packHash ?: return null
-        return requester.useClient {
-            val objectName = "${packPrefix}$packHash"
-            val fileObject = getObject(bucketName, objectName)
-            if (fileObject.objectMetadata.contentType != "text/plain") {
-                throw IllegalStateException("Checksum file is not a text file")
-            }
-
-            val objectContent = fileObject.objectContent
-            val text = objectContent.bufferedReader().use { it.readText() }
-            HashCode.fromString(text)
-        }
     }
 
     fun onDisable() {

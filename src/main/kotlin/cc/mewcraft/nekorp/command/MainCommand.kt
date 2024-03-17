@@ -23,10 +23,6 @@ class MainCommand : SimpleCommand {
     }
 
     override fun suggest(invocation: SimpleCommand.Invocation): List<String> {
-        val args = invocation.arguments()
-        if (args.isEmpty()) {
-            return subCommands.keys.toList()
-        }
-        return emptyList()
+        return subCommands.keys.toList()
     }
 }

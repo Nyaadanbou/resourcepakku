@@ -4,8 +4,9 @@ import cc.mewcraft.nekorp.event.NekoRpReloadEvent
 import cc.mewcraft.nekorp.util.listen
 import cc.mewcraft.nekorp.util.plugin
 import cc.mewcraft.nekorp.util.reloadable
-import com.google.common.collect.LinkedHashMultimap
+import com.google.common.collect.ImmutableMultimap
 import com.google.common.collect.Multimap
+import com.google.common.collect.MultimapBuilder
 import com.google.common.collect.Multimaps
 import com.google.common.hash.HashCode
 import net.kyori.adventure.text.Component
@@ -27,7 +28,9 @@ data class PackConfig(
     val packPrefix: String,
     val packPathName: String,
     val packHash: String?,
-)
+) {
+    fun packHashCode(): HashCode? = runCatching { packHash?.let { HashCode.fromString(it) } }.getOrNull()
+}
 
 class NekoRpConfig(
     dataDirectory: Path,
@@ -42,7 +45,7 @@ class NekoRpConfig(
 
     // Key: Server Name
     // Val: Pack Name
-    private val serverPackMap: Multimap<String, PackConfig> = Multimaps.synchronizedSetMultimap(LinkedHashMultimap.create())
+    private lateinit var serverPackMap: ImmutableMultimap<String, PackConfig>
 
     private val root: ConfigurationNode by reloadable { loader.load() }
 
@@ -62,14 +65,17 @@ class NekoRpConfig(
     }
 
     fun onReload() {
-        serverPackMap.clear()
         if (!path.exists()) {
             initConfig()
         }
-
+        val serverPackMap: Multimap<String, PackConfig> = MultimapBuilder
+            .hashKeys()
+            .linkedHashSetValues()
+            .build()
         serverNode.childrenMap().forEach { (serverName, serverNode) ->
             serverPackMap.putAll(serverName.toString(), createServerPackConfig(serverNode))
         }
+        this.serverPackMap = ImmutableMultimap.copyOf(serverPackMap)
     }
 
     val endpoint: String by reloadable { ossNode.node("endpoint").requireKt<String>() }
@@ -88,6 +94,10 @@ class NekoRpConfig(
         if (!serverPackMap.containsKey(serverName))
             return defaultServerSettings
         return serverPackMap[serverName].toList()
+    }
+
+    fun getPackByHash(hashCode: HashCode): PackConfig? {
+        return serverPackMap.values().firstOrNull { it.packHashCode()?.let { hash -> hash == hashCode } ?: false }
     }
 
     fun setPackHash(packName: String, hashCode: HashCode) {

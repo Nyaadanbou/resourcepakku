@@ -14,13 +14,12 @@ packs:
       bucket_name: g2213swo
       pack_prefix: assets/ # Required path prefix. E.g., assets/
       pack_name: pack.zip # Required type: application/zip
-      pack_hash: checksum.txt # Required type: text/plain or hash string
+      pack_hash: ""
   pack2:
     oss_path:
       bucket_name: mimaru
       pack_prefix: assets/
       pack_name: dev.zip
-      # No hash file, program will compute hash from pack file and put it below
       pack_hash: ""
 
 servers:
