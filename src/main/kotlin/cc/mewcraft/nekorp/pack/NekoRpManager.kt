@@ -12,6 +12,7 @@ import com.aliyun.oss.model.GeneratePresignedUrlRequest
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
 import com.github.benmanes.caffeine.cache.RemovalCause
+import com.google.common.hash.HashCode
 import org.slf4j.Logger
 import java.net.InetAddress
 import java.time.Instant
@@ -47,10 +48,7 @@ class NekoRpManager(
             }
         }
 
-    /**
-     * 用于存储 OSS 资源包最后的更新时间。
-     */
-    private val packLastModifiedCache: MutableMap<PackConfig, Date> = ConcurrentHashMap()
+    private val packHashCodeCache: MutableMap<PackConfig, HashCode> = ConcurrentHashMap()
 
     /**
      * 获取玩家的资源包下载地址。
@@ -63,6 +61,14 @@ class NekoRpManager(
      */
     fun getPackData(uniqueId: UUID, playerIp: InetAddress, packConfig: PackConfig): PackData? {
         return packDataLimitCache[PackDataKey(uniqueId, playerIp, packConfig)]
+    }
+
+    fun getComputedPackHash(packConfig: PackConfig): HashCode? {
+        return packHashCodeCache[packConfig]
+    }
+
+    fun putComputedPackHash(packConfig: PackConfig, hash: HashCode) {
+        packHashCodeCache[packConfig] = hash
     }
 
     /**
@@ -95,21 +101,13 @@ class NekoRpManager(
                 expiration = Date.from(Instant.now().plusSeconds(expireSeconds))
             }
             val generatedLink = generatePresignedUrl(request)
-            val lastModified = objectMetadata.lastModified
-            val hash = if (lastModified == packLastModifiedCache[packConfig]) {
-                // 最后的更新时间信息与 OSS 上的最后更新时间信息相同，不需要重新计算 hash
-                packConfig.packHashCode()
-            } else {
-                // 最后的更新时间信息与 OSS 上的最后更新时间信息不同，需要重新计算 hash
-                null
-            }
-            packLastModifiedCache[packConfig] = lastModified
-            PackData(generatedLink, hash)
+            PackData(generatedLink)
         }
     }
 
     fun onDisable() {
         packDataLimitCache.invalidateAll()
+        packHashCodeCache.clear()
         requester.close()
     }
 }

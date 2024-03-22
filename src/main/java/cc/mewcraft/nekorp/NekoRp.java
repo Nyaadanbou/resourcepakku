@@ -86,12 +86,9 @@ public class NekoRp {
         var packInfo = event.getPackInfo();
         if (packInfo == null)
             return;
-        byte[] hashBytes = packInfo.getHash();
-        if (hashBytes == null)
-            return;
-        HashCode hash = HashCode.fromBytes(hashBytes);
-        PackConfig packByHash = config.getPackByHash(hash);
-        if (packByHash == null)
+        UUID nameUUID = packInfo.getId();
+        PackConfig packByNameUUID = config.getPackConfigFromNameUUID(nameUUID);
+        if (packByNameUUID == null)
             return;
 
         Player player = event.getPlayer();
@@ -100,15 +97,15 @@ public class NekoRp {
         // When the player fails to download the pack, we need to remove the access limit for the player
         switch (status) {
             case FAILED_DOWNLOAD, FAILED_RELOAD, DECLINED, INVALID_URL, DISCARDED -> {
-                nekoRpManager.onFailedDownload(playerUniqueId, address, packByHash);
-                logger.info("Player {} failed to download pack {}. status: {}", player.getUsername(), packByHash.getConfigPackName(), status);
+                nekoRpManager.onFailedDownload(playerUniqueId, address, packByNameUUID);
+                logger.info("Player {} failed to download pack {}. status: {}", player.getUsername(), packByNameUUID.getConfigPackName(), status);
             }
             case ACCEPTED ->
-                    logger.info("Player {} accepted pack {}", player.getUsername(), packByHash.getConfigPackName());
+                    logger.info("Player {} accepted pack {}", player.getUsername(), packByNameUUID.getConfigPackName());
             case DOWNLOADED ->
-                    logger.info("Player {} downloaded pack {}", player.getUsername(), packByHash.getConfigPackName());
+                    logger.info("Player {} downloaded pack or use client cached pack {}", player.getUsername(), packByNameUUID.getConfigPackName());
             case SUCCESSFUL ->
-                    logger.info("Player {} successfully applied pack {}", player.getUsername(), packByHash.getConfigPackName());
+                    logger.info("Player {} successfully applied pack {}", player.getUsername(), packByNameUUID.getConfigPackName());
         }
     }
 
@@ -167,9 +164,9 @@ public class NekoRp {
             logger.error("Failed to get pack data, please check your configuration. Pack: {}", packConfig.getConfigPackName());
             return null;
         }
-        UUID resourcePackId = UUID.nameUUIDFromBytes(packConfig.getPackPathName().getBytes());
+        UUID resourcePackId = NekoRpConfig.ConfigUtil.toNameUUID(packConfig);
         try {
-            HashCode hash = result.getHash();
+            HashCode hash = nekoRpManager.getComputedPackHash(packConfig);
             ResourcePackInfo.Builder builder = ResourcePackInfo.resourcePackInfo()
                     .id(resourcePackId)
                     .uri(result.getDownloadUrl().toURI());
@@ -187,9 +184,10 @@ public class NekoRp {
                 if (!(Throwables.getRootCause(e) instanceof IOException)) {
                     logger.error("Failed to compute hash", e);
                 }
+                logger.info("Blocked downloading request {} from player {}", packConfig.getConfigPackName(), playerUniqueId);
                 return null;
             }
-            config.setPackHash(packConfig.getConfigPackName(), HashCode.fromString(info.hash()));
+            nekoRpManager.putComputedPackHash(packConfig, HashCode.fromString(info.hash()));
             return info;
         } catch (URISyntaxException e) {
             logger.error("Failed to parse URI", e);

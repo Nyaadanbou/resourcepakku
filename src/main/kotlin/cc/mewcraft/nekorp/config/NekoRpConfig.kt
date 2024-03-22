@@ -7,7 +7,6 @@ import cc.mewcraft.nekorp.util.reloadable
 import com.google.common.collect.ImmutableMultimap
 import com.google.common.collect.Multimap
 import com.google.common.collect.MultimapBuilder
-import com.google.common.hash.HashCode
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.spongepowered.configurate.ConfigurationNode
@@ -15,6 +14,7 @@ import org.spongepowered.configurate.kotlin.extensions.get
 import org.spongepowered.configurate.yaml.NodeStyle
 import org.spongepowered.configurate.yaml.YamlConfigurationLoader
 import java.nio.file.Path
+import java.util.*
 import kotlin.io.path.exists
 import kotlin.io.path.outputStream
 
@@ -23,6 +23,10 @@ private const val CONFIG_FILE_NAME = "config.yml"
 class NekoRpConfig(
     dataDirectory: Path,
 ) {
+    companion object ConfigUtil {
+        fun toNameUUID(packConfig: PackConfig): UUID = UUID.nameUUIDFromBytes(packConfig.packPathName.toByteArray())
+    }
+
     private val path = dataDirectory.resolve(CONFIG_FILE_NAME)
     private val loader: YamlConfigurationLoader by reloadable {
         YamlConfigurationLoader.builder()
@@ -84,13 +88,8 @@ class NekoRpConfig(
         return serverPackMap[serverName].toList()
     }
 
-    fun getPackByHash(hashCode: HashCode): PackConfig? {
-        return serverPackMap.values().firstOrNull { it.packHashCode()?.let { hash -> hash == hashCode } ?: false }
-    }
-
-    fun setPackHash(packName: String, hashCode: HashCode) {
-        packNode.node(packName, "oss_path", "pack_hash").set(hashCode.toString())
-        loader.save(root)
+    fun getPackConfigFromNameUUID(uniqueId: UUID): PackConfig? {
+        return serverPackMap.values().find { UUID.nameUUIDFromBytes(it.packPathName.toByteArray()) == uniqueId }
     }
 
     private fun initConfig() {
@@ -111,7 +110,6 @@ class NekoRpConfig(
             bucketName = node.node("oss_path", "bucket_name").requireKt(),
             packPrefix = node.node("oss_path", "pack_prefix").requireKt(),
             packPathName = node.node("oss_path", "pack_name").requireKt(),
-            packHash = node.node("oss_path", "pack_hash").get<String>()?.takeIf { it.isNotBlank() }
         )
     }
 }
