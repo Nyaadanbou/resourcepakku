@@ -1,5 +1,6 @@
 package cc.mewcraft.nekorp
 
+import cc.mewcraft.nekorp.config.NekoRpConfig
 import com.aliyun.oss.OSS
 import com.aliyun.oss.OSSClientBuilder
 

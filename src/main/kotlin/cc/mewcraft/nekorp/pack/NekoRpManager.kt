@@ -1,7 +1,10 @@
 @file:Suppress("UnstableApiUsage")
 
-package cc.mewcraft.nekorp
+package cc.mewcraft.nekorp.pack
 
+import cc.mewcraft.nekorp.OSSRequester
+import cc.mewcraft.nekorp.config.NekoRpConfig
+import cc.mewcraft.nekorp.config.PackConfig
 import cc.mewcraft.nekorp.util.plugin
 import com.aliyun.oss.HttpMethod
 import com.aliyun.oss.OSSException
@@ -9,29 +12,12 @@ import com.aliyun.oss.model.GeneratePresignedUrlRequest
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.LoadingCache
 import com.github.benmanes.caffeine.cache.RemovalCause
-import com.google.common.hash.HashCode
 import org.slf4j.Logger
 import java.net.InetAddress
-import java.net.URL
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-
-data class PackData(
-    val downloadUrl: URL,
-    /**
-     * 此文件的 SHA-1 值
-     *
-     * @return null 代表未提供哈希
-     */
-    val hash: HashCode?,
-)
-
-data class PackDataKey(
-    val uuid: UUID,
-    val inetAddress: InetAddress,
-    val packConfig: PackConfig,
-)
 
 class NekoRpManager(
     private val logger: Logger,
@@ -41,6 +27,13 @@ class NekoRpManager(
     private val expireSeconds: Long = config.expireSeconds
     private val limitSeconds: Long = config.limitSeconds
 
+    /**
+     * 用于存储玩家的资源包下载地址。
+     *
+     * 当玩家请求资源包下载地址时，将会生成一个下载地址，并且存储在这个缓存中。
+     * 此后的请求将会直接返回这个地址 (尽管链接已经过期），直到缓存过期。
+     * 以此来限制玩家频繁请求资源包下载地址。
+     */
     private val packDataLimitCache: LoadingCache<PackDataKey, PackData> = Caffeine.newBuilder()
         .expireAfterWrite(limitSeconds, TimeUnit.SECONDS)
         .removalListener<PackDataKey, PackData> { key, _, cause ->
@@ -53,6 +46,11 @@ class NekoRpManager(
                 logger.info("Successfully generated download link ${it.downloadUrl} for ${key.uuid}. IP: ${key.inetAddress}. Pack: ${key.packConfig.configPackName}")
             }
         }
+
+    /**
+     * 用于存储 OSS 资源包最后的更新时间。
+     */
+    private val packLastModifiedCache: MutableMap<PackConfig, Date> = ConcurrentHashMap()
 
     /**
      * 获取玩家的资源包下载地址。
@@ -86,7 +84,7 @@ class NekoRpManager(
      */
     private fun getPackDownloadAddress(packConfig: PackConfig): PackData {
         val bucketName = packConfig.bucketName
-        val generatedLink = requester.useClient {
+        return requester.useClient {
             val objectName = "${packConfig.packPrefix}${packConfig.packPathName}"
             val objectMetadata = getObjectMetadata(bucketName, objectName)
             if (objectMetadata.contentType != "application/zip") {
@@ -96,12 +94,18 @@ class NekoRpManager(
                 // Set the expiration time of the URL to 30 minutes from now
                 expiration = Date.from(Instant.now().plusSeconds(expireSeconds))
             }
-            generatePresignedUrl(request)
+            val generatedLink = generatePresignedUrl(request)
+            val lastModified = objectMetadata.lastModified
+            val hash = if (lastModified == packLastModifiedCache[packConfig]) {
+                // 最后的更新时间信息与 OSS 上的最后更新时间信息相同，不需要重新计算 hash
+                packConfig.packHashCode()
+            } else {
+                // 最后的更新时间信息与 OSS 上的最后更新时间信息不同，需要重新计算 hash
+                null
+            }
+            packLastModifiedCache[packConfig] = lastModified
+            PackData(generatedLink, hash)
         }
-        val hash = packConfig.packHashCode()
-        val result = PackData(generatedLink, hash)
-
-        return result
     }
 
     fun onDisable() {

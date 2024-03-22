@@ -1,4 +1,4 @@
-package cc.mewcraft.nekorp
+package cc.mewcraft.nekorp.config
 
 import cc.mewcraft.nekorp.event.NekoRpReloadEvent
 import cc.mewcraft.nekorp.util.listen
@@ -7,7 +7,6 @@ import cc.mewcraft.nekorp.util.reloadable
 import com.google.common.collect.ImmutableMultimap
 import com.google.common.collect.Multimap
 import com.google.common.collect.MultimapBuilder
-import com.google.common.collect.Multimaps
 import com.google.common.hash.HashCode
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
@@ -20,17 +19,6 @@ import kotlin.io.path.exists
 import kotlin.io.path.outputStream
 
 private const val CONFIG_FILE_NAME = "config.yml"
-
-data class PackConfig(
-    val configPackName: String,
-    /* OSS Path Settings */
-    val bucketName: String,
-    val packPrefix: String,
-    val packPathName: String,
-    val packHash: String?,
-) {
-    fun packHashCode(): HashCode? = runCatching { packHash?.let { HashCode.fromString(it) } }.getOrNull()
-}
 
 class NekoRpConfig(
     dataDirectory: Path,

@@ -1,7 +1,11 @@
 package cc.mewcraft.nekorp;
 
 import cc.mewcraft.nekorp.command.MainCommand;
+import cc.mewcraft.nekorp.config.NekoRpConfig;
+import cc.mewcraft.nekorp.config.PackConfig;
 import cc.mewcraft.nekorp.event.NekoRpReloadEvent;
+import cc.mewcraft.nekorp.pack.NekoRpManager;
+import cc.mewcraft.nekorp.pack.PackData;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import com.google.common.hash.HashCode;
@@ -12,6 +16,7 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.player.PlayerResourcePackStatusEvent;
 import com.velocitypowered.api.event.player.ServerConnectedEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
@@ -37,10 +42,10 @@ import java.util.concurrent.TimeUnit;
 
 @Plugin(id = "nekorp", name = "NekoRp", version = "1.0.0", dependencies = {@Dependency(id = "kotlin")}, authors = {"g2213swo"})
 public class NekoRp {
-    private static NekoRp INSTANCE;
+    private static NekoRp instance;
 
     public static NekoRp getInstance() {
-        return INSTANCE;
+        return instance;
     }
 
     public final ProxyServer server;
@@ -53,7 +58,7 @@ public class NekoRp {
 
     @Inject
     public NekoRp(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
-        INSTANCE = this;
+        instance = this;
         this.logger = logger;
         this.server = server;
         this.dataDirectory = dataDirectory;
@@ -68,6 +73,11 @@ public class NekoRp {
 
         var mainCommand = new MainCommand();
         server.getCommandManager().register("nekorp", mainCommand);
+    }
+
+    @Subscribe
+    private void onProxyShutdown(ProxyShutdownEvent event) {
+        nekoRpManager.onDisable();
     }
 
     @Subscribe
@@ -93,9 +103,12 @@ public class NekoRp {
                 nekoRpManager.onFailedDownload(playerUniqueId, address, packByHash);
                 logger.info("Player {} failed to download pack {}. status: {}", player.getUsername(), packByHash.getConfigPackName(), status);
             }
-            case ACCEPTED -> logger.info("Player {} accepted pack {}", player.getUsername(), packByHash.getConfigPackName());
-            case DOWNLOADED -> logger.info("Player {} downloaded pack {}", player.getUsername(), packByHash.getConfigPackName());
-            case SUCCESSFUL -> logger.info("Player {} successfully applied pack {}", player.getUsername(), packByHash.getConfigPackName());
+            case ACCEPTED ->
+                    logger.info("Player {} accepted pack {}", player.getUsername(), packByHash.getConfigPackName());
+            case DOWNLOADED ->
+                    logger.info("Player {} downloaded pack {}", player.getUsername(), packByHash.getConfigPackName());
+            case SUCCESSFUL ->
+                    logger.info("Player {} successfully applied pack {}", player.getUsername(), packByHash.getConfigPackName());
         }
     }
 
@@ -160,24 +173,23 @@ public class NekoRp {
             ResourcePackInfo.Builder builder = ResourcePackInfo.resourcePackInfo()
                     .id(resourcePackId)
                     .uri(result.getDownloadUrl().toURI());
-            ResourcePackInfo info;
             if (hash != null) {
                 // If the hash is already known, we can set it directly
-                info = builder.hash(hash.toString()).build();
-            } else {
-                // If the hash is not known, we need to compute it and set it in the config
-                try {
-                    info = builder.computeHashAndBuild().join();
-                } catch (CompletionException e) {
-                    // If the error is not an IOException, log it
-                    // IOExceptions are expected when the player's limit is reached
-                    if (!(Throwables.getRootCause(e) instanceof IOException)) {
-                        logger.error("Failed to compute hash", e);
-                    }
-                    return null;
-                }
-                config.setPackHash(packConfig.getConfigPackName(), HashCode.fromString(info.hash()));
+                return builder.hash(hash.toString()).build();
             }
+            // If the hash is not known, we need to compute it and set it in the config
+            ResourcePackInfo info;
+            try {
+                info = builder.computeHashAndBuild().join();
+            } catch (CompletionException e) {
+                // If the error is not an IOException, log it
+                // IOExceptions are expected when the player's limit is reached
+                if (!(Throwables.getRootCause(e) instanceof IOException)) {
+                    logger.error("Failed to compute hash", e);
+                }
+                return null;
+            }
+            config.setPackHash(packConfig.getConfigPackName(), HashCode.fromString(info.hash()));
             return info;
         } catch (URISyntaxException e) {
             logger.error("Failed to parse URI", e);
