@@ -47,6 +47,7 @@ class NekoRpManager(
                 logger.info("Successfully generated download link ${it.downloadUrl} for ${key.uuid}. IP: ${key.inetAddress}. Pack: ${key.packConfig.configPackName}")
             }
         }
+    private val packLastModifiedCache: MutableMap<PackConfig, Date> = ConcurrentHashMap()
 
     private val packHashCodeCache: MutableMap<PackConfig, HashCode> = ConcurrentHashMap()
 
@@ -96,6 +97,13 @@ class NekoRpManager(
             if (objectMetadata.contentType != "application/zip") {
                 throw IllegalStateException("Pack file is not a zip file")
             }
+            // If the pack file has been modified, update the cache
+            val lastModified = objectMetadata.lastModified
+            if (packLastModifiedCache[packConfig] != lastModified) {
+                packLastModifiedCache[packConfig] = lastModified
+                packHashCodeCache -= packConfig
+            }
+
             val request = GeneratePresignedUrlRequest(bucketName, objectName, HttpMethod.GET).apply {
                 // Set the expiration time of the URL to 30 minutes from now
                 expiration = Date.from(Instant.now().plusSeconds(expireSeconds))
