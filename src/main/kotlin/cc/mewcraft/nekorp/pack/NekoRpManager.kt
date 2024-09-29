@@ -4,8 +4,9 @@ package cc.mewcraft.nekorp.pack
 
 import cc.mewcraft.nekorp.OSSRequester
 import cc.mewcraft.nekorp.config.NekoRpConfig
+import cc.mewcraft.nekorp.config.OSSPackConfig
 import cc.mewcraft.nekorp.config.PackConfig
-import cc.mewcraft.nekorp.util.plugin
+import cc.mewcraft.nekorp.plugin
 import com.aliyun.oss.HttpMethod
 import com.aliyun.oss.OSSException
 import com.aliyun.oss.model.GeneratePresignedUrlRequest
@@ -90,9 +91,12 @@ class NekoRpManager(
      * @throws OSSException 如果无法获取资源包下载地址。
      */
     private fun getPackDownloadAddress(packConfig: PackConfig): PackData {
+        if (packConfig !is OSSPackConfig) {
+            throw IllegalArgumentException("Pack config is not an OSS pack config")
+        }
         val bucketName = packConfig.bucketName
         return requester.useClient {
-            val objectName = "${packConfig.packPrefix}${packConfig.packPathName}"
+            val objectName = packConfig.packPath.toString()
             val objectMetadata = getObjectMetadata(bucketName, objectName)
             if (objectMetadata.contentType != "application/zip") {
                 throw IllegalStateException("Pack file is not a zip file")

@@ -1,6 +1,7 @@
 package cc.mewcraft.nekorp.util
 
 import cc.mewcraft.nekorp.event.NekoRpReloadEvent
+import cc.mewcraft.nekorp.plugin
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 

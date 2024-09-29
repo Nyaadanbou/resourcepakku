@@ -12,19 +12,16 @@ packs:
   pack1:
     oss_path:
       bucket_name: g2213swo
-      pack_prefix: assets/ # Required path prefix. E.g., assets/
-      pack_name: pack.zip # Required type: application/zip
-      pack_hash: ""
+      pack_path: assets/pack.zip # 文件路径
   pack2:
     oss_path:
       bucket_name: mimaru
-      pack_prefix: assets/
-      pack_name: dev.zip
-      pack_hash: ""
+      pack_path: assets/dev.zip
+
+# 所有服务器的默认材质包, 当服务器没有配置材质包时使用
+server_default: []
 
 servers:
   lobby:
     - pack1
     - pack2
-
-server_default: []

@@ -1,7 +1,7 @@
 plugins {
-    id("neko.repositories") version "1.0"
-    kotlin("jvm") version "1.9.22"
-    alias(libs.plugins.shadow)
+    id("nekorp-conventions.commons")
+    id("nyaadanbou-conventions.repositories")
+    id("nyaadanbou-conventions.copy-jar")
 }
 
 project.ext.set("name", "nekorp")
@@ -11,10 +11,9 @@ version = "1.0.0"
 description = "A resourcepack distributor running on Velocity platform."
 
 dependencies {
-    compileOnly(libs.proxy.velocity)
-    annotationProcessor(libs.proxy.velocity)
+    compileOnly(local.velocity)
+    kapt(local.velocity)
     implementation(platform(libs.bom.caffeine))
-    implementation(platform(libs.bom.configurate.yaml))
     implementation(platform(libs.bom.configurate.kotlin))
 
     // Aliyun OSS
@@ -26,24 +25,6 @@ dependencies {
     implementation("javax.xml.bind:jaxb-api:2.4.0-b180830.0359")
     implementation("javax.activation:activation:1.1-rev-1")
     implementation("org.glassfish.jaxb:jaxb-runtime:4.0.4")
-}
-
-kotlin {
-    jvmToolchain(17)
-
-    sourceSets {
-        val main by getting {
-            dependencies {
-                compileOnly(kotlin("stdlib"))
-            }
-        }
-        val test by getting {
-            dependencies {
-                implementation(kotlin("test"))
-                implementation(kotlin("stdlib"))
-            }
-        }
-    }
 }
 
 tasks {
@@ -63,13 +44,8 @@ tasks {
         }
     }
 
-    val inputJarPath = lazy { shadowJar.get().archiveFile.get().asFile.absolutePath }
-    val finalJarName = lazy { "${ext.get("name")}-${project.version}.jar" }
-    register<Copy>("copyJar") {
-        group = "mewcraft"
-        dependsOn(build)
-        from(inputJarPath.value)
-        into(layout.buildDirectory)
-        rename("(?i)${project.name}.*\\.jar", finalJarName.value)
+    copyJar {
+        environment = "velocity"
+        jarFileName = "nekorp-${project.version}.jar"
     }
 }

@@ -1,6 +1,6 @@
 package cc.mewcraft.nekorp.command
 
-import cc.mewcraft.nekorp.util.plugin
+import cc.mewcraft.nekorp.plugin
 import com.velocitypowered.api.command.SimpleCommand
 import net.kyori.adventure.text.Component
 import kotlin.time.measureTime

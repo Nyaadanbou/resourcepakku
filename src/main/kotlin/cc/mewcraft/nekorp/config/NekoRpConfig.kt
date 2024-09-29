@@ -1,12 +1,9 @@
 package cc.mewcraft.nekorp.config
 
 import cc.mewcraft.nekorp.event.NekoRpReloadEvent
+import cc.mewcraft.nekorp.plugin
 import cc.mewcraft.nekorp.util.listen
-import cc.mewcraft.nekorp.util.plugin
 import cc.mewcraft.nekorp.util.reloadable
-import com.google.common.collect.ImmutableMultimap
-import com.google.common.collect.Multimap
-import com.google.common.collect.MultimapBuilder
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.spongepowered.configurate.ConfigurationNode
@@ -15,6 +12,7 @@ import org.spongepowered.configurate.yaml.NodeStyle
 import org.spongepowered.configurate.yaml.YamlConfigurationLoader
 import java.nio.file.Path
 import java.util.*
+import kotlin.io.path.Path
 import kotlin.io.path.exists
 import kotlin.io.path.outputStream
 
@@ -24,7 +22,7 @@ class NekoRpConfig(
     dataDirectory: Path,
 ) {
     companion object ConfigUtil {
-        fun toNameUUID(packConfig: PackConfig): UUID = UUID.nameUUIDFromBytes(packConfig.packPathName.toByteArray())
+        fun toNameUUID(packConfig: PackConfig): UUID = UUID.nameUUIDFromBytes(packConfig.packPath.toString().toByteArray())
     }
 
     private val path = dataDirectory.resolve(CONFIG_FILE_NAME)
@@ -35,9 +33,11 @@ class NekoRpConfig(
             .build()
     }
 
-    // Key: Server Name
-    // Val: Pack Name
-    private lateinit var serverPackMap: ImmutableMultimap<String, PackConfig>
+    // Key: Server name
+    // Value: Pack configs
+    // 如果某个服务器没有配置, 则使用默认服务器的配置
+    // 如果某个服务器配置为空列表, 则不会加载任何资源包
+    private lateinit var serverPackMap: Map<String, PackConfigs>
 
     private val root: ConfigurationNode by reloadable { loader.load() }
 
@@ -60,14 +60,11 @@ class NekoRpConfig(
         if (!path.exists()) {
             initConfig()
         }
-        val serverPackMap: Multimap<String, PackConfig> = MultimapBuilder
-            .hashKeys()
-            .linkedHashSetValues()
-            .build()
+        val serverPackMap = hashMapOf<String, PackConfigs>()
         serverNode.childrenMap().forEach { (serverName, serverNode) ->
-            serverPackMap.putAll(serverName.toString(), createServerPackConfig(serverNode))
+            serverPackMap[serverName.toString()] = createServerPackConfigs(serverNode)
         }
-        this.serverPackMap = ImmutableMultimap.copyOf(serverPackMap)
+        this.serverPackMap = serverPackMap
     }
 
     val endpoint: String by reloadable { ossNode.node("endpoint").requireKt<String>() }
@@ -80,16 +77,16 @@ class NekoRpConfig(
     val prompt: Component by reloadable { MiniMessage.miniMessage().deserialize(resourcePackNode.node("prompt").requireKt()) }
     val force: Boolean by reloadable { resourcePackNode.node("force").requireKt<Boolean>() }
 
-    private val defaultServerSettings: List<PackConfig> by reloadable { createServerPackConfig(defaultServerNode) }
+    private val defaultServerSettings: PackConfigs by reloadable { createServerPackConfigs(defaultServerNode) }
 
-    fun getServerPacks(serverName: String): List<PackConfig> {
-        if (!serverPackMap.containsKey(serverName))
-            return defaultServerSettings
-        return serverPackMap[serverName].toList()
+    fun getServerPackConfigs(serverName: String): PackConfigs {
+        if (serverPackMap.containsKey(serverName))
+            return serverPackMap[serverName]!!
+        return defaultServerSettings
     }
 
     fun getPackConfigFromNameUUID(uniqueId: UUID): PackConfig? {
-        return serverPackMap.values().find { UUID.nameUUIDFromBytes(it.packPathName.toByteArray()) == uniqueId }
+        return serverPackMap.values.flatten().find { UUID.nameUUIDFromBytes(it.packPath.toString().toByteArray()) == uniqueId }
     }
 
     private fun initConfig() {
@@ -98,18 +95,21 @@ class NekoRpConfig(
         }
     }
 
-    private fun createServerPackConfig(serverNode: ConfigurationNode): List<PackConfig> {
+    private fun createServerPackConfigs(serverNode: ConfigurationNode): PackConfigs {
         val packNames = serverNode.requireKt<List<String>>()
-        return packNames.map { packNode.node(it) }
+        if (packNames.isEmpty())
+            return EmptyPackConfigs
+        return packNames
+            .map { packNode.node(it) }
             .map { createPackConfig(it.key().toString(), it) }
+            .let { PackConfigs.of(it) }
     }
 
     private fun createPackConfig(nodeName: String, node: ConfigurationNode): PackConfig {
-        return PackConfig(
+        return OSSPackConfig(
             configPackName = nodeName,
-            bucketName = node.node("oss_path", "bucket_name").requireKt(),
-            packPrefix = node.node("oss_path", "pack_prefix").requireKt(),
-            packPathName = node.node("oss_path", "pack_name").requireKt(),
+            packPath = node.node("oss_path", "pack_path").requireKt<String>().let { Path(it) },
+            bucketName = node.node("oss_path", "bucket_name").requireKt()
         )
     }
 }
