@@ -21,10 +21,6 @@ private const val CONFIG_FILE_NAME = "config.yml"
 class NekoRpConfig(
     dataDirectory: Path,
 ) {
-    companion object ConfigUtil {
-        fun toNameUUID(packConfig: PackConfig): UUID = UUID.nameUUIDFromBytes(packConfig.packPath.toString().toByteArray())
-    }
-
     private val path = dataDirectory.resolve(CONFIG_FILE_NAME)
     private val loader: YamlConfigurationLoader by reloadable {
         YamlConfigurationLoader.builder()
@@ -86,7 +82,8 @@ class NekoRpConfig(
     }
 
     fun getPackConfigFromNameUUID(uniqueId: UUID): PackConfig? {
-        return serverPackMap.values.flatten().find { UUID.nameUUIDFromBytes(it.packPath.toString().toByteArray()) == uniqueId }
+        return defaultServerSettings.find { it.nameUniqueId == uniqueId }
+            ?: serverPackMap.values.flatten().find { it.nameUniqueId == uniqueId }
     }
 
     private fun initConfig() {

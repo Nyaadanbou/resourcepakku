@@ -40,12 +40,12 @@ class NekoRpManager(
         .expireAfterWrite(limitSeconds, TimeUnit.SECONDS)
         .removalListener<PackDataKey, PackData> { key, _, cause ->
             if (cause == RemovalCause.EXPIRED) {
-                logger.info("Removed expired pack data for player uuid ${key?.uuid}. Pack: ${key?.packConfig?.configPackName}")
+                logger.info("Removed expired pack data for player uuid ${key?.uuid}. Pack: ${key?.packConfig}")
             }
         }
         .build { key ->
             getPackDownloadAddress(key.packConfig).also {
-                logger.info("Successfully generated download link ${it.downloadUrl} for ${key.uuid}. IP: ${key.inetAddress}. Pack: ${key.packConfig.configPackName}")
+                logger.info("Successfully generated download link ${it.downloadUrl} for ${key.uuid}. IP: ${key.inetAddress}. Pack: ${key.packConfig}")
             }
         }
     private val packLastModifiedCache: MutableMap<PackConfig, Date> = ConcurrentHashMap()
