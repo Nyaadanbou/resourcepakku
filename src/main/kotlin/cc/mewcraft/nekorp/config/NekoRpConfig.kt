@@ -4,6 +4,7 @@ import cc.mewcraft.nekorp.event.NekoRpReloadEvent
 import cc.mewcraft.nekorp.plugin
 import cc.mewcraft.nekorp.util.listen
 import cc.mewcraft.nekorp.util.reloadable
+import com.velocitypowered.api.proxy.player.ResourcePackInfo
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import org.spongepowered.configurate.ConfigurationNode
@@ -75,15 +76,19 @@ class NekoRpConfig(
 
     private val defaultServerSettings: PackConfigs by reloadable { createServerPackConfigs(defaultServerNode) }
 
-    fun getServerPackConfigs(serverName: String): PackConfigs {
+    fun getPackConfigs(serverName: String): PackConfigs {
         if (serverPackMap.containsKey(serverName))
             return serverPackMap[serverName]!!
         return defaultServerSettings
     }
 
-    fun getPackConfigFromNameUUID(uniqueId: UUID): PackConfig? {
-        return defaultServerSettings.find { it.nameUniqueId == uniqueId }
-            ?: serverPackMap.values.flatten().find { it.nameUniqueId == uniqueId }
+    fun getPackConfig(uniqueId: UUID): PackConfig? {
+        return defaultServerSettings.find { it.uniqueId == uniqueId }
+            ?: serverPackMap.values.flatten().find { it.uniqueId == uniqueId }
+    }
+
+    fun getPackConfig(info: ResourcePackInfo): PackConfig? {
+        return getPackConfig(info.id)
     }
 
     private fun initConfig() {

@@ -1,25 +1,18 @@
 package cc.mewcraft.nekorp
 
-import cc.mewcraft.nekorp.config.NekoRpConfig
-import cc.mewcraft.nekorp.config.PackConfig
+import cc.mewcraft.nekorp.config.*
 import cc.mewcraft.nekorp.pack.NekoRpManager
-import com.google.common.base.Throwables
-import com.google.common.hash.HashCode
-import com.velocitypowered.api.event.Continuation
+import com.google.common.collect.Table
+import com.google.common.collect.Tables
+import com.velocitypowered.api.event.PostOrder
 import com.velocitypowered.api.event.Subscribe
+import com.velocitypowered.api.event.connection.DisconnectEvent
 import com.velocitypowered.api.event.player.PlayerResourcePackStatusEvent
 import com.velocitypowered.api.event.player.configuration.PlayerConfigurationEvent
-import net.kyori.adventure.resource.ResourcePackInfo
-import net.kyori.adventure.resource.ResourcePackInfoLike
 import net.kyori.adventure.resource.ResourcePackRequest
-import net.kyori.adventure.text.Component
-import org.jetbrains.annotations.Blocking
 import org.slf4j.Logger
-import java.io.IOException
-import java.net.InetAddress
-import java.net.URISyntaxException
 import java.util.*
-import java.util.concurrent.CompletionException
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
 class ResourcePackListener(
@@ -29,60 +22,62 @@ class ResourcePackListener(
     private val nekoRpManager: NekoRpManager = plugin.nekoRpManager
     private val logger: Logger = plugin.logger
 
-    private val playerContinuations = ConcurrentHashMap<UUID, Continuation>()
+    /**
+     * row key: player unique id
+     * column key: pack name unique id
+     * value: a future that will be completed when the player has finished downloading the pack
+     */
+    private val playerPackStatus: Table<UUID, UUID, CompletableFuture<ResourcePackResult>> = Tables.newCustomTable(ConcurrentHashMap()) { ConcurrentHashMap() }
 
-    @Subscribe
+    @Subscribe(order = PostOrder.LAST)
     private fun onResourcePackStatus(event: PlayerResourcePackStatusEvent) {
         val player = event.player
         val playerUniqueId = player.uniqueId
-        val packUuid = event.packId
-        val packByNameUUID = packUuid?.let { config.getPackConfigFromNameUUID(it) }
-        if (packByNameUUID == null) {
-            logger.error("Failed to find pack configuration for pack {}", packUuid)
-            val continuation = playerContinuations.remove(playerUniqueId)
-            continuation?.resume()
-            return
-        }
+        val packUuid = event.packId ?: return
+        logger.info("Player {} has {} the resource pack {}", playerUniqueId, event.status, packUuid)
+        val pluginPackByNameUUID = config.getPackConfig(packUuid)
 
-        val address = player.remoteAddress.address
-        // When the player fails to download the pack, we need to remove the access limit for the player
-        when (val status = event.status) {
-            PlayerResourcePackStatusEvent.Status.FAILED_DOWNLOAD, PlayerResourcePackStatusEvent.Status.FAILED_RELOAD, PlayerResourcePackStatusEvent.Status.INVALID_URL, PlayerResourcePackStatusEvent.Status.DISCARDED -> {
-                nekoRpManager.onFailedDownload(playerUniqueId, address, packByNameUUID)
-                val continuation = playerContinuations.remove(playerUniqueId)
-                continuation?.resume()
-                logger.info("Player {} failed to download pack {}. status: {}", player.username, packByNameUUID, status)
-            }
-
-            PlayerResourcePackStatusEvent.Status.DECLINED -> {
-                nekoRpManager.onFailedDownload(playerUniqueId, address, packByNameUUID)
-                val continuation = playerContinuations.remove(playerUniqueId)
-                continuation?.resume()
-                logger.info("Player {} declined pack {}", player.username, packByNameUUID)
-            }
-
-            PlayerResourcePackStatusEvent.Status.ACCEPTED -> logger.info("Player {} accepted pack {}", player.username, packByNameUUID)
-            PlayerResourcePackStatusEvent.Status.DOWNLOADED -> logger.info("Player {} downloaded pack or use client cached pack {}", player.username, packByNameUUID)
-            PlayerResourcePackStatusEvent.Status.SUCCESSFUL -> {
-                val continuation = playerContinuations.remove(playerUniqueId)
-                continuation?.resume()
-                logger.info("Player {} successfully applied pack {}", player.username, packByNameUUID)
-            }
-        }
+        playerPackStatus.remove(playerUniqueId, packUuid)
+            ?.complete(ResourcePackResult(pluginPackByNameUUID, event.status == PlayerResourcePackStatusEvent.Status.SUCCESSFUL))
     }
 
     @Subscribe
-    private fun onConfiguration(event: PlayerConfigurationEvent, continuation: Continuation) {
+    private fun onPlayerDisconnect(event: DisconnectEvent) {
         val player = event.player
-        playerContinuations[player.uniqueId] = continuation
+        val playerUniqueId = player.uniqueId
+        for ((_, future) in playerPackStatus.row(playerUniqueId)) {
+            future.complete(ResourcePackResult(EmptyPackConfig, false))
+        }
+        playerPackStatus.row(playerUniqueId).clear()
+    }
+
+    @Subscribe
+    private fun onConfiguration(event: PlayerConfigurationEvent) {
+        val player = event.player
+        val playerUniqueId = player.uniqueId
+        val address = player.remoteAddress.address
+
+        //<editor-fold desc="Create future">
+        val future = CompletableFuture<ResourcePackResult>()
+        future.whenComplete { result, _ ->
+            if (result.success) {
+                logger.info("Player {} has successfully downloaded the resource pack", player.uniqueId)
+            } else {
+                val pack = result.pack
+                if (pack != null) {
+                    // 证明是插件的资源包, 进行失败处理
+                    nekoRpManager.onFailedDownload(playerUniqueId, address, pack)
+                }
+                logger.info("Player {} has failed to download the resource pack", player.uniqueId)
+            }
+        }
+        //</editor-fold>
+
         val currentServer = event.server.serverInfo.name
 
         //<editor-fold desc="Packs">
-        val currentServerConfigs = config.getServerPackConfigs(currentServer)
+        val currentServerConfigs = config.getPackConfigs(currentServer)
         //</editor-fold>
-
-        // Get the packs that need to be applied
-        val applyPacks = currentServerConfigs.mapNotNull { getResourcePackInfo(player.uniqueId, player.remoteAddress.address, it) }
 
         // Create the request
         val request = ResourcePackRequest.resourcePackRequest()
@@ -91,57 +86,20 @@ class ResourcePackListener(
             .required(config.force)
             .replace(true)
 
-        val changes = ResourcePackSender(applyPacks, player.appliedResourcePacks.flatMap { it.asResourcePackRequest().packs() }).getChanges()
+        val playerAppliedPacks = player.appliedResourcePacks
+            .flatMap { it.asResourcePackRequest().packs() }
+            .map { config.getPackConfig(it.id()) ?: MinecraftPackConfig(it) }
+            .let { PackConfigs.of(it) }
+
+        val changes = ResourcePackSender(currentServerConfigs, playerAppliedPacks).getChanges()
         for (change in changes) {
             change.apply(player, request)
+            playerPackStatus.put(player.uniqueId, change.pack.uniqueId, future)
         }
-    }
-
-    /**
-     * Get the ResourcePackInfo for a pack.
-     *
-     * @param playerUniqueId The unique id of the player.
-     * @param address        The address of the player.
-     * @param packConfig     The pack configuration.
-     *
-     * @return The ResourcePackInfo or null if an error occurred.
-     */
-    @Blocking
-    private fun getResourcePackInfo(playerUniqueId: UUID, address: InetAddress, packConfig: PackConfig): ResourcePackInfoLike? {
-        val result = nekoRpManager.getPackData(playerUniqueId, address, packConfig)
-        if (result == null) {
-            logger.error("Failed to get pack data, please check your configuration. Pack: {}", packConfig.configPackName)
-            return null
-        }
-        try {
-            val hash = nekoRpManager.getComputedPackHash(packConfig)
-            val nameUniqueId = packConfig.nameUniqueId
-            logger.info("Sending pack {} to player {}, pack name unique id: {}", packConfig.configPackName, playerUniqueId, nameUniqueId)
-            val builder = ResourcePackInfo.resourcePackInfo()
-                .id(nameUniqueId)
-                .uri(result.downloadUrl.toURI())
-            if (hash != null) {
-                // If the hash is already known, we can set it directly
-                return builder.hash(hash.toString()).build()
-            }
-            // If the hash is not known, we need to compute it and set it in the config
-            val info: ResourcePackInfo
-            try {
-                info = builder.computeHashAndBuild().join()
-            } catch (e: CompletionException) {
-                // If the error is not an IOException, log it
-                // IOExceptions are expected when the player's limit is reached
-                if (Throwables.getRootCause(e) !is IOException) {
-                    logger.error("Failed to compute hash", e)
-                }
-                logger.info("Blocked downloading request {} from player {}", packConfig.configPackName, playerUniqueId)
-                return null
-            }
-            nekoRpManager.putComputedPackHash(packConfig, HashCode.fromString(info.hash()))
-            return info
-        } catch (e: URISyntaxException) {
-            logger.error("Failed to parse URI", e)
-        }
-        return null
     }
 }
+
+private data class ResourcePackResult(
+    val pack: PackConfig?,
+    val success: Boolean,
+)

@@ -1,12 +1,13 @@
 package cc.mewcraft.nekorp
 
+import cc.mewcraft.nekorp.config.PackConfig
+import cc.mewcraft.nekorp.config.PackConfigs
 import com.velocitypowered.api.proxy.Player
-import net.kyori.adventure.resource.ResourcePackInfoLike
 import net.kyori.adventure.resource.ResourcePackRequest
 
 class ResourcePackSender(
-    private val toApply: Collection<ResourcePackInfoLike>,
-    private val playerAppliedResourcePacks: Collection<ResourcePackInfoLike>,
+    private val toApply: PackConfigs,
+    private val playerAppliedResourcePacks: PackConfigs,
 ) {
     fun getChanges(): Collection<Change> {
         val changes = mutableListOf<Change>()
@@ -23,9 +24,10 @@ class ResourcePackSender(
         return changes
     }
 
+
     class Change(
         val type: Type,
-        val pack: ResourcePackInfoLike,
+        val pack: PackConfig,
     ) {
         enum class Type {
             ADD,
@@ -33,9 +35,10 @@ class ResourcePackSender(
         }
 
         fun apply(player: Player, builder: ResourcePackRequest.Builder) {
+            val info = pack.getResourcePackInfo(player.uniqueId, player.remoteAddress.address) ?: return
             when (type) {
-                Type.ADD -> player.sendResourcePacks(builder.packs(pack))
-                Type.REMOVE -> player.removeResourcePacks(builder.packs(pack))
+                Type.ADD -> player.sendResourcePacks(builder.packs(info))
+                Type.REMOVE -> player.removeResourcePacks(builder.packs(info))
             }
         }
     }

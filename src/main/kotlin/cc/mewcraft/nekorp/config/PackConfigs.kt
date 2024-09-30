@@ -6,6 +6,8 @@ interface PackConfigs : Iterable<PackConfig> {
     }
 
     val configs: List<PackConfig>
+
+    fun isEmpty(): Boolean = configs.isEmpty()
 }
 
 data object EmptyPackConfigs : PackConfigs {

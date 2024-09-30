@@ -9,8 +9,8 @@ dependencyResolutionManagement {
         maven("https://repo.mewcraft.cc/releases")
         maven("https://repo.mewcraft.cc/private") {
             credentials {
-                username = providers.gradleProperty("nyaadanbouUsername").getOrElse("")
-                password = providers.gradleProperty("nyaadanbouPassword").getOrElse("")
+                username = providers.gradleProperty("nyaadanbou.mavenUsername").getOrElse("")
+                password = providers.gradleProperty("nyaadanbou.mavenPassword").getOrElse("")
             }
         }
     }

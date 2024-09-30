@@ -3,6 +3,7 @@
 package cc.mewcraft.nekorp.pack
 
 import cc.mewcraft.nekorp.OSSRequester
+import cc.mewcraft.nekorp.config.EmptyPackConfig
 import cc.mewcraft.nekorp.config.NekoRpConfig
 import cc.mewcraft.nekorp.config.OSSPackConfig
 import cc.mewcraft.nekorp.config.PackConfig
@@ -81,6 +82,8 @@ class NekoRpManager(
      * @param uniqueId 玩家的 UUID。
      */
     fun onFailedDownload(uniqueId: UUID, playerIp: InetAddress, packConfig: PackConfig) {
+        if (packConfig is EmptyPackConfig)
+            return
         packDataLimitCache.invalidate(PackDataKey(uniqueId, playerIp, packConfig))
     }
 
