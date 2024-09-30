@@ -4,11 +4,12 @@ import cc.mewcraft.nekorp.config.*
 import cc.mewcraft.nekorp.pack.NekoRpManager
 import com.google.common.collect.Table
 import com.google.common.collect.Tables
+import com.velocitypowered.api.event.EventTask
 import com.velocitypowered.api.event.PostOrder
 import com.velocitypowered.api.event.Subscribe
 import com.velocitypowered.api.event.connection.DisconnectEvent
 import com.velocitypowered.api.event.player.PlayerResourcePackStatusEvent
-import com.velocitypowered.api.event.player.configuration.PlayerConfigurationEvent
+import com.velocitypowered.api.event.player.configuration.PlayerFinishConfigurationEvent
 import net.kyori.adventure.resource.ResourcePackRequest
 import org.slf4j.Logger
 import java.util.*
@@ -31,34 +32,37 @@ class ResourcePackListener(
 
     @Subscribe(order = PostOrder.LAST)
     private fun onResourcePackStatus(event: PlayerResourcePackStatusEvent) {
-        val player = event.player
-        val playerUniqueId = player.uniqueId
-        val packUuid = event.packId ?: return
-        logger.info("Player {} has {} the resource pack {}", playerUniqueId, event.status, packUuid)
-        val pluginPackByNameUUID = config.getPackConfig(packUuid)
+        val status = event.status
+        if (!status.isIntermediate) {
+            val player = event.player
+            val playerUniqueId = player.uniqueId
+            val packUuid = event.packId ?: return
+            logger.info("Player {} has {} the resource pack {}", playerUniqueId, status, packUuid)
+            val pluginPackByNameUUID = config.getPackConfig(packUuid)
 
-        playerPackStatus.remove(playerUniqueId, packUuid)
-            ?.complete(ResourcePackResult(pluginPackByNameUUID, event.status == PlayerResourcePackStatusEvent.Status.SUCCESSFUL))
+            playerPackStatus.remove(playerUniqueId, packUuid)
+                ?.complete(ResourcePackResult(pluginPackByNameUUID, status == PlayerResourcePackStatusEvent.Status.SUCCESSFUL))
+        }
     }
 
     @Subscribe
     private fun onPlayerDisconnect(event: DisconnectEvent) {
         val player = event.player
         val playerUniqueId = player.uniqueId
-        for ((_, future) in playerPackStatus.row(playerUniqueId)) {
+        val packMap = playerPackStatus.rowMap().remove(playerUniqueId) ?: return
+        for ((_, future) in packMap) {
             future.complete(ResourcePackResult(EmptyPackConfig, false))
         }
-        playerPackStatus.row(playerUniqueId).clear()
     }
 
     @Subscribe
-    private fun onConfiguration(event: PlayerConfigurationEvent) {
+    private fun onConfiguration(event: PlayerFinishConfigurationEvent): EventTask {
         val player = event.player
         val playerUniqueId = player.uniqueId
         val address = player.remoteAddress.address
 
         //<editor-fold desc="Create future">
-        val future = CompletableFuture<ResourcePackResult>()
+        var future = CompletableFuture<ResourcePackResult>()
         future.whenComplete { result, _ ->
             if (result.success) {
                 logger.info("Player {} has successfully downloaded the resource pack", player.uniqueId)
@@ -93,9 +97,18 @@ class ResourcePackListener(
 
         val changes = ResourcePackSender(currentServerConfigs, playerAppliedPacks).getChanges()
         for (change in changes) {
+            val defaultFuture: CompletableFuture<ResourcePackResult> = CompletableFuture.completedFuture(ResourcePackResult(null, true))
             change.apply(player, request)
             playerPackStatus.put(player.uniqueId, change.pack.uniqueId, future)
+            future = future.thenCombine(defaultFuture) { origin, future1 ->
+                ResourcePackResult(
+                    origin.pack ?: future1.pack,
+                    origin.success && future1.success
+                )
+            }
         }
+
+        return EventTask.resumeWhenComplete(future)
     }
 }
 
