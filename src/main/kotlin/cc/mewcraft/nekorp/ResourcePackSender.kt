@@ -9,8 +9,15 @@ class ResourcePackSender(
     private val toApply: PackConfigs,
     private val playerAppliedResourcePacks: PackConfigs,
 ) {
-    fun getChanges(): Collection<Change> {
+    fun getChanges(): List<Change> {
         val changes = mutableListOf<Change>()
+        if (toApply.isEmpty()) {
+            for (pack in playerAppliedResourcePacks) {
+                changes.add(Change(Change.Type.REMOVE, pack))
+            }
+            return changes
+        }
+
         for (pack in toApply) {
             if (pack !in playerAppliedResourcePacks) {
                 changes.add(Change(Change.Type.ADD, pack))
@@ -25,7 +32,7 @@ class ResourcePackSender(
     }
 
 
-    class Change(
+    data class Change(
         val type: Type,
         val pack: PackConfig,
     ) {
@@ -38,7 +45,7 @@ class ResourcePackSender(
             val info = pack.getResourcePackInfo(player.uniqueId, player.remoteAddress.address) ?: return
             when (type) {
                 Type.ADD -> player.sendResourcePacks(builder.packs(info))
-                Type.REMOVE -> player.removeResourcePacks(builder.packs(info))
+                Type.REMOVE -> player.removeResourcePacks(pack.uniqueId)
             }
         }
     }

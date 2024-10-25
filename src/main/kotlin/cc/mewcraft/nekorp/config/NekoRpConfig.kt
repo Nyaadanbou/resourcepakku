@@ -13,9 +13,7 @@ import org.spongepowered.configurate.yaml.NodeStyle
 import org.spongepowered.configurate.yaml.YamlConfigurationLoader
 import java.nio.file.Path
 import java.util.*
-import kotlin.io.path.Path
-import kotlin.io.path.exists
-import kotlin.io.path.outputStream
+import kotlin.io.path.*
 
 private const val CONFIG_FILE_NAME = "config.yml"
 
@@ -54,7 +52,11 @@ class NekoRpConfig(
     }
 
     fun onReload() {
-        if (!path.exists()) {
+        if (path.parent.notExists()) {
+            path.parent.createDirectories()
+        }
+        if (path.notExists()) {
+            path.createFile()
             initConfig()
         }
         val serverPackMap = hashMapOf<String, PackConfigs>()

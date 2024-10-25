@@ -22,7 +22,7 @@ interface PackConfig {
     fun getResourcePackInfo(playerUniqueId: UUID, address: InetAddress): ResourcePackInfoLike?
 }
 
-class OSSPackConfig(
+data class OSSPackConfig(
     override val configPackName: String,
     override val packPath: Path,
     /* OSS Path Settings */
