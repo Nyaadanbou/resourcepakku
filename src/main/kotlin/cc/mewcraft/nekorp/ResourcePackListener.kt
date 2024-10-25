@@ -113,9 +113,8 @@ class ResourcePackListener(
         }
         //</editor-fold>
 
-        // Create the request
+        // Create a request template
         val request = ResourcePackRequest.resourcePackRequest()
-            // Velocity applies packs in reverse order
             .prompt(config.prompt)
             .required(config.force)
             .replace(true)
