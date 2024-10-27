@@ -9,13 +9,10 @@ class ResourcePackSender(
     private val toApply: PackConfigs,
     private val playerAppliedResourcePacks: PackConfigs,
 ) {
-    fun getChanges(): List<Change> {
+    fun getChangeResult(): ChangeResult {
         val changes = mutableListOf<Change>()
         if (toApply.isEmpty()) {
-            for (pack in playerAppliedResourcePacks) {
-                changes.add(Change(Change.Type.REMOVE, pack))
-            }
-            return changes
+            return ChangeResult.NoApply
         }
 
         for (pack in toApply) {
@@ -28,7 +25,39 @@ class ResourcePackSender(
                 changes.add(Change(Change.Type.REMOVE, pack))
             }
         }
-        return changes
+
+        return ChangeResult.Success(changes)
+    }
+
+    sealed interface ChangeResult {
+
+        val changeSize: Int
+
+        /**
+         * The target server has changes to apply.
+         */
+        data class Success(val changes: List<Change>) : ChangeResult {
+            init {
+                require(changes.isNotEmpty()) { "changes must not be empty" }
+            }
+
+            override val changeSize: Int
+                get() = changes.size
+        }
+
+        /**
+         * The target server has no changes to apply.
+         */
+        data object NoChange : ChangeResult {
+            override val changeSize: Int = 0
+        }
+
+        /**
+         * The target server has no resource pack to apply.
+         */
+        data object NoApply : ChangeResult {
+            override val changeSize: Int = 0
+        }
     }
 
 

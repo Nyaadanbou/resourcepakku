@@ -94,8 +94,9 @@ class NekoRpConfig(
     }
 
     private fun initConfig() {
-        plugin.javaClass.getResourceAsStream("/$CONFIG_FILE_NAME")?.buffered()?.use {
-            it.copyTo(path.outputStream().buffered())
+        val resource = plugin::class.java.getResourceAsStream("/$CONFIG_FILE_NAME") ?: throw IllegalStateException("Missing default config file")
+        resource.use { input ->
+            path.outputStream().use { output -> input.copyTo(output) }
         }
     }
 

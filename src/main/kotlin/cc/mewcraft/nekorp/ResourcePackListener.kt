@@ -34,7 +34,7 @@ class ResourcePackListener(
     /**
      * Represents the changes that need to be applied to a player's resource packs when they are in configuration.w
      */
-    private val playerChanges: ConcurrentHashMap<UUID, List<ResourcePackSender.Change>> = ConcurrentHashMap()
+    private val playerChanges: ConcurrentHashMap<UUID, ResourcePackSender.ChangeResult> = ConcurrentHashMap()
 
     @Subscribe
     private fun onServerPreConnect(event: ServerPreConnectEvent) {
@@ -43,23 +43,14 @@ class ResourcePackListener(
 
         //<editor-fold desc="Packs">
         val currentServerConfigs = config.getPackConfigs(originalServer)
-        if (currentServerConfigs.isEmpty()) {
-            logger.info("No resource packs are configured for server {}", originalServer)
-            player.clearResourcePacks()
-            return
-        }
         //</editor-fold>
         val playerAppliedPacks = player.appliedResourcePacks
             .flatMap { it.asResourcePackRequest().packs() }
             .map { config.getPackConfig(it.id()) ?: MinecraftPackConfig(it) }
             .let { PackConfigs.of(it) }
+        val changeResult = ResourcePackSender(currentServerConfigs, playerAppliedPacks).getChangeResult()
 
-        val changes = ResourcePackSender(currentServerConfigs, playerAppliedPacks).getChanges()
-        logger.info("Player {} has {} changes to their resource packs. Changes: {}", player.uniqueId, changes.size, changes)
-
-        if (changes.isNotEmpty()) {
-            playerChanges[player.uniqueId] = changes
-        }
+        playerChanges[player.uniqueId] = changeResult
     }
 
     @Subscribe(order = PostOrder.LAST)
@@ -69,7 +60,7 @@ class ResourcePackListener(
             val player = event.player
             val playerUniqueId = player.uniqueId
             val packUuid = event.packId ?: return
-            logger.info("Player {} has {} the resource pack {}", playerUniqueId, status, packUuid)
+            logger.info("Player {} has {} the resource pack {}", player.username, status, packUuid)
             val pluginPackByNameUUID = config.getPackConfig(packUuid)
 
             playerPackStatus.remove(playerUniqueId, packUuid)
@@ -93,7 +84,27 @@ class ResourcePackListener(
         val player = event.player
         val playerUniqueId = player.uniqueId
         val changes = playerChanges.remove(playerUniqueId)
-            ?: return null
+            .let {
+                when (it) {
+                    ResourcePackSender.ChangeResult.NoApply -> {
+                        logger.info("No resource packs are configured for server {}", event.server.serverInfo.name)
+                        player.clearResourcePacks()
+                        return null
+                    }
+
+                    is ResourcePackSender.ChangeResult.NoChange -> {
+                        logger.info("No changes are required for player {}", player.username)
+                        return null
+                    }
+
+                    is ResourcePackSender.ChangeResult.Success -> it.changes
+
+                    null -> {
+                        logger.warn("Player {} has no changes to their resource packs, This is a bug!", player.username)
+                        return null
+                    }
+                }
+            }
 
         val address = player.remoteAddress.address
 
