@@ -1,27 +1,56 @@
-oss:
-  endpoint: "oss-cn-zhangjiakou.aliyuncs.com"
-  access_key_id: ""
-  access_key_secret: ""
-  expire_seconds: 60
+# 资源包的分发实现
+services:
+  # Aliyun OSS
+  # 注: 目前仅支持设置一套 OSS 的验证信息, 但支持在这套验证信息下访问任意的 Bucket (在 packs 下定义)
+  aliyun_oss:
+    # Aliyun OSS 的验证信息
+    endpoint: "oss-cn-zhangjiakou.aliyuncs.com"
+    access_key_id: ""
+    access_key_secret: ""
+    # 从 Aliyun OSS 生成的资源包预签名链接的过期时间 (秒).
+    presigned_url_expire_seconds: 30
+    # 从 Aliyun OSS 生成新的资源包预签名链接的最小间隔 (秒).
+    new_presigned_url_interval: 30
+  # 内置 HTTP 服务器
+  self_hosting:
+    # 当为 true 时, 将启动一个 HTTP 服务器
+    enabled: false
+    # HTTP 服务器监听的地址
+    host: "localhost"
+    port: 7390
+
+# 资源包的通用设置
 resource_pack:
-  limit_seconds: 1800
-  prompt: <yellow>Hello!
-  force: false
+  prompt: "<yellow>Hello!"
+  force: true
 
+# 所有资源包的配置
 packs:
+  # 这一级 key 写资源包的名字 (将在 default_packs 和 server_packs 中被引用)
   pack1:
-    oss_path:
-      bucket_name: g2213swo
-      pack_path: assets/pack.zip # 文件路径
+    # type 为 "aliyun_oss" 则采用 Aliyun OSS 作为分发方式
+    type: "aliyun_oss"
+    # Aliyun OSS Bucket 的名字
+    bucket_name: "resrcpacks"
+    # 资源包的路径, 相对于 Aliyun OSS Bucket 的根目录
+    pack_path: "assets/pack1.zip"
   pack2:
-    oss_path:
-      bucket_name: mimaru
-      pack_path: assets/dev.zip
+    # type 为 "self_hosting" 则采用内置 HTTP 服务器作为分发方式
+    type: "self_hosting"
+    # 资源包的路径, 相对于 `<插件数据文件夹>/webserver` 的根目录
+    pack_path: "assets/pack2.zip"
 
-# 所有服务器的默认材质包, 当服务器没有配置材质包时使用
-server_default: []
+# 所有服务器的默认材质包, 当服务器没有配置材质包时使用.
+# 格式同 server_packs.<server_name> 下的写法.
+# 可为空列表 ("[]").
+default_packs:
+  - "pack1"
 
-servers:
-  lobby:
-    - pack1
-    - pack2
+# 每个服务器对应的资源包
+server_packs:
+  # 这一级 key 写服务器的名字
+  # 这一级 val 写资源包的列表, 内容为资源包的名字 (必须在 packs 中定义好)
+  lobby1:
+    - "pack1"
+  lobby2:
+    - "pack2"
