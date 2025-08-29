@@ -1,7 +1,7 @@
-package cc.mewcraft.nekorp
+package cc.mewcraft.resourcepakku
 
-import cc.mewcraft.nekorp.config.PackConfig
-import cc.mewcraft.nekorp.config.PackConfigs
+import cc.mewcraft.resourcepakku.config.PackConfig
+import cc.mewcraft.resourcepakku.config.PackConfigs
 import com.velocitypowered.api.proxy.Player
 import net.kyori.adventure.resource.ResourcePackRequest
 

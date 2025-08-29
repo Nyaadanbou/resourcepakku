@@ -1,6 +1,6 @@
-package cc.mewcraft.nekorp.pack
+package cc.mewcraft.resourcepakku.pack
 
-import cc.mewcraft.nekorp.config.PackConfig
+import cc.mewcraft.resourcepakku.config.PackConfig
 import java.net.InetAddress
 import java.util.*
 

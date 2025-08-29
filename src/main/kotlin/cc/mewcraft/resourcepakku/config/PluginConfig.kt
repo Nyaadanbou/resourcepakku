@@ -1,9 +1,9 @@
-package cc.mewcraft.nekorp.config
+package cc.mewcraft.resourcepakku.config
 
-import cc.mewcraft.nekorp.event.NekoRpReloadEvent
-import cc.mewcraft.nekorp.plugin
-import cc.mewcraft.nekorp.util.listen
-import cc.mewcraft.nekorp.util.reloadable
+import cc.mewcraft.resourcepakku.event.ResourcePakkuReloadEvent
+import cc.mewcraft.resourcepakku.plugin
+import cc.mewcraft.resourcepakku.util.listen
+import cc.mewcraft.resourcepakku.util.reloadable
 import com.velocitypowered.api.proxy.player.ResourcePackInfo
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
@@ -17,7 +17,7 @@ import kotlin.io.path.*
 
 private const val CONFIG_FILE_NAME = "config.yml"
 
-class NekoRpConfig(
+class PluginConfig(
     dataDirectory: Path,
 ) {
     private val path = dataDirectory.resolve(CONFIG_FILE_NAME)
@@ -48,7 +48,7 @@ class NekoRpConfig(
         get() = root.node("server_default")
 
     init {
-        plugin.listen<NekoRpReloadEvent> { onReload() }
+        plugin.listen<ResourcePakkuReloadEvent> { onReload() }
     }
 
     fun onReload() {

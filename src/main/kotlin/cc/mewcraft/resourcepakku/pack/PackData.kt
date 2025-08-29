@@ -1,4 +1,4 @@
-package cc.mewcraft.nekorp.pack
+package cc.mewcraft.resourcepakku.pack
 
 import java.net.URL
 

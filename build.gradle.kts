@@ -4,7 +4,7 @@ plugins {
     id("nyaadanbou-conventions.copy-jar")
 }
 
-project.ext.set("name", "nekorp")
+project.ext.set("name", "resourcepakku")
 
 group = "cc.mewcraft.nekorp"
 version = "1.0.0"
@@ -46,6 +46,6 @@ tasks {
 
     copyJar {
         environment = "velocity"
-        jarFileName = "nekorp-${project.version}.jar"
+        jarFileName = "resourcepakku-${project.version}.jar"
     }
 }

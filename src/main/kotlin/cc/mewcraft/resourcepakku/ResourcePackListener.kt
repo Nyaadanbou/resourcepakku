@@ -1,7 +1,7 @@
-package cc.mewcraft.nekorp
+package cc.mewcraft.resourcepakku
 
-import cc.mewcraft.nekorp.config.*
-import cc.mewcraft.nekorp.pack.NekoRpManager
+import cc.mewcraft.resourcepakku.config.*
+import cc.mewcraft.resourcepakku.pack.ResourcePakkuManager
 import com.google.common.collect.Table
 import com.google.common.collect.Tables
 import com.velocitypowered.api.event.EventTask
@@ -18,10 +18,10 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 
 class ResourcePackListener(
-    plugin: NekoRp,
+    plugin: ResourcePakkuPlugin,
 ) {
-    private val config: NekoRpConfig = plugin.config
-    private val nekoRpManager: NekoRpManager = plugin.nekoRpManager
+    private val config: PluginConfig = plugin.config
+    private val resourcePakkuManager: ResourcePakkuManager = plugin.resourcePakkuManager
     private val logger: Logger = plugin.logger
 
     /**
@@ -116,8 +116,7 @@ class ResourcePackListener(
             } else {
                 val pack = result.pack
                 if (pack != null) {
-                    // 证明是插件的资源包, 进行失败处理
-                    nekoRpManager.onFailedDownload(playerUniqueId, address, pack)
+                    resourcePakkuManager.onFailedDownload(playerUniqueId, address, pack)
                 }
                 logger.info("Player {} has failed to download the resource pack", player.uniqueId)
             }

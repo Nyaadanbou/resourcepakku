@@ -1,7 +1,7 @@
-package cc.mewcraft.nekorp.util
+package cc.mewcraft.resourcepakku.util
 
-import cc.mewcraft.nekorp.event.NekoRpReloadEvent
-import cc.mewcraft.nekorp.plugin
+import cc.mewcraft.resourcepakku.event.ResourcePakkuReloadEvent
+import cc.mewcraft.resourcepakku.plugin
 import kotlin.properties.ReadOnlyProperty
 import kotlin.reflect.KProperty
 
@@ -11,7 +11,7 @@ class Reloadable<T>(private val loader: () -> T) : ReadOnlyProperty<Any?, T> {
     private var value: T? = null
 
     init {
-        plugin.listen<NekoRpReloadEvent> { reload() }
+        plugin.listen<ResourcePakkuReloadEvent> { reload() }
     }
 
     fun get(): T {

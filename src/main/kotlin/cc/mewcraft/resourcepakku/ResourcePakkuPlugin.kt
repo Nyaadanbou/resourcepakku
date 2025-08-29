@@ -1,9 +1,9 @@
-package cc.mewcraft.nekorp
+package cc.mewcraft.resourcepakku
 
-import cc.mewcraft.nekorp.command.MainCommand
-import cc.mewcraft.nekorp.config.NekoRpConfig
-import cc.mewcraft.nekorp.event.NekoRpReloadEvent
-import cc.mewcraft.nekorp.pack.NekoRpManager
+import cc.mewcraft.resourcepakku.command.MainCommand
+import cc.mewcraft.resourcepakku.config.PluginConfig
+import cc.mewcraft.resourcepakku.event.ResourcePakkuReloadEvent
+import cc.mewcraft.resourcepakku.pack.ResourcePakkuManager
 import com.google.inject.Inject
 import com.velocitypowered.api.event.EventHandler
 import com.velocitypowered.api.event.PostOrder
@@ -18,13 +18,13 @@ import org.slf4j.Logger
 import java.nio.file.Path
 
 @Plugin(
-    id = "nekorp",
-    name = "NekoRp",
+    id = "resourcepakku",
+    name = "resourcepakku",
     version = "1.0.0",
     dependencies = [Dependency(id = "kotlin")],
     authors = ["g2213swo"]
 )
-class NekoRp @Inject constructor(
+class ResourcePakkuPlugin @Inject constructor(
     val server: ProxyServer,
     val logger: Logger,
     @DataDirectory
@@ -32,28 +32,28 @@ class NekoRp @Inject constructor(
 ) {
 
     companion object {
-        internal var INSTANCE: NekoRp? = null
+        internal var INSTANCE: ResourcePakkuPlugin? = null
     }
 
-    lateinit var config: NekoRpConfig
+    lateinit var config: PluginConfig
     lateinit var ossRequester: OSSRequester
-    lateinit var nekoRpManager: NekoRpManager
+    lateinit var resourcePakkuManager: ResourcePakkuManager
     lateinit var resourcePackListener: ResourcePackListener
 
     @Subscribe
     private fun onProxyInitialization(event: ProxyInitializeEvent) {
         INSTANCE = this
-        this.config = NekoRpConfig(dataDirectory)
+        this.config = PluginConfig(dataDirectory)
         config.onReload()
         this.ossRequester = OSSRequester(config)
-        this.nekoRpManager = NekoRpManager(logger, config)
+        this.resourcePakkuManager = ResourcePakkuManager(logger, config)
         this.resourcePackListener = ResourcePackListener(this)
         server.eventManager.register(this, resourcePackListener)
 
         val mainCommand = MainCommand()
         val commandManager = server.commandManager
         commandManager.register(
-            commandManager.metaBuilder("nekorp")
+            commandManager.metaBuilder("resourcepakku")
                 .plugin(this)
                 .build(),
             mainCommand
@@ -63,7 +63,7 @@ class NekoRp @Inject constructor(
     @Subscribe
     private fun onProxyShutdown(event: ProxyShutdownEvent) {
         INSTANCE = null
-        nekoRpManager.onDisable()
+        resourcePakkuManager.onDisable()
         server.eventManager.unregisterListener(this, resourcePackListener)
     }
 
@@ -72,9 +72,9 @@ class NekoRp @Inject constructor(
     }
 
     fun reload() {
-        server.eventManager.fire(NekoRpReloadEvent())
+        server.eventManager.fire(ResourcePakkuReloadEvent())
     }
 }
 
-internal val plugin: NekoRp
-    get() = NekoRp.INSTANCE ?: throw IllegalStateException("Plugin not initialized")
+internal val plugin: ResourcePakkuPlugin
+    get() = ResourcePakkuPlugin.INSTANCE ?: throw IllegalStateException("Plugin not initialized")

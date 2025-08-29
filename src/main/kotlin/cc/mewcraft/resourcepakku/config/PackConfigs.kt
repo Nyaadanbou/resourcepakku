@@ -1,4 +1,4 @@
-package cc.mewcraft.nekorp.config
+package cc.mewcraft.resourcepakku.config
 
 interface PackConfigs : Iterable<PackConfig> {
     companion object {

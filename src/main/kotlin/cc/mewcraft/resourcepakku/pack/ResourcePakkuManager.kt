@@ -1,13 +1,13 @@
 @file:Suppress("UnstableApiUsage")
 
-package cc.mewcraft.nekorp.pack
+package cc.mewcraft.resourcepakku.pack
 
-import cc.mewcraft.nekorp.OSSRequester
-import cc.mewcraft.nekorp.config.EmptyPackConfig
-import cc.mewcraft.nekorp.config.NekoRpConfig
-import cc.mewcraft.nekorp.config.OSSPackConfig
-import cc.mewcraft.nekorp.config.PackConfig
-import cc.mewcraft.nekorp.plugin
+import cc.mewcraft.resourcepakku.OSSRequester
+import cc.mewcraft.resourcepakku.config.EmptyPackConfig
+import cc.mewcraft.resourcepakku.config.OSSPackConfig
+import cc.mewcraft.resourcepakku.config.PackConfig
+import cc.mewcraft.resourcepakku.config.PluginConfig
+import cc.mewcraft.resourcepakku.plugin
 import com.aliyun.oss.HttpMethod
 import com.aliyun.oss.OSSException
 import com.aliyun.oss.model.GeneratePresignedUrlRequest
@@ -22,9 +22,9 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class NekoRpManager(
+class ResourcePakkuManager(
     private val logger: Logger,
-    config: NekoRpConfig,
+    config: PluginConfig,
 ) {
     private val requester: OSSRequester = plugin.ossRequester
     private val expireSeconds: Long = config.expireSeconds
@@ -116,6 +116,7 @@ class NekoRpManager(
                 expiration = Date.from(Instant.now().plusSeconds(expireSeconds))
             }
             val generatedLink = generatePresignedUrl(request)
+
             PackData(generatedLink)
         }
     }

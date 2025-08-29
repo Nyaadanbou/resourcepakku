@@ -1,6 +1,6 @@
-package cc.mewcraft.nekorp.config
+package cc.mewcraft.resourcepakku.config
 
-import cc.mewcraft.nekorp.plugin
+import cc.mewcraft.resourcepakku.plugin
 import com.google.common.base.Throwables
 import com.google.common.hash.HashCode
 import net.kyori.adventure.resource.ResourcePackInfo
@@ -10,7 +10,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.URISyntaxException
 import java.nio.file.Path
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.CompletionException
 import kotlin.io.path.toPath
 
@@ -79,7 +79,7 @@ data object EmptyPackConfig : PackConfig {
 
 private data object PackConfigSupport {
     private val logger = plugin.logger
-    private val nekoRpManager = plugin.nekoRpManager
+    private val resourcePakkuManager = plugin.resourcePakkuManager
 
     /**
      * Get the ResourcePackInfo for a pack.
@@ -92,13 +92,13 @@ private data object PackConfigSupport {
      */
     @Blocking
     fun getResourcePackInfo(playerUniqueId: UUID, address: InetAddress, packConfig: PackConfig): ResourcePackInfoLike? {
-        val result = nekoRpManager.getPackData(playerUniqueId, address, packConfig)
+        val result = resourcePakkuManager.getPackData(playerUniqueId, address, packConfig)
         if (result == null) {
             logger.error("Failed to get pack data, please check your configuration. Pack: {}", packConfig.configPackName)
             return null
         }
         try {
-            val hash = nekoRpManager.getComputedPackHash(packConfig)
+            val hash = resourcePakkuManager.getComputedPackHash(packConfig)
             val nameUniqueId = packConfig.uniqueId
             logger.info("Sending pack {} to player {}, pack name unique id: {}", packConfig.configPackName, playerUniqueId, nameUniqueId)
             val builder = ResourcePackInfo.resourcePackInfo()
@@ -121,7 +121,7 @@ private data object PackConfigSupport {
                 logger.info("Blocked downloading request {} from player {}", packConfig.configPackName, playerUniqueId)
                 return null
             }
-            nekoRpManager.putComputedPackHash(packConfig, HashCode.fromString(info.hash()))
+            resourcePakkuManager.putComputedPackHash(packConfig, HashCode.fromString(info.hash()))
             return info
         } catch (e: URISyntaxException) {
             logger.error("Failed to parse URI", e)

@@ -1,9 +1,9 @@
-package cc.mewcraft.nekorp.util
+package cc.mewcraft.resourcepakku.util
 
-import cc.mewcraft.nekorp.NekoRp
+import cc.mewcraft.resourcepakku.ResourcePakkuPlugin
 import com.velocitypowered.api.event.PostOrder
 
-inline fun <reified T : Any> NekoRp.listen(
+inline fun <reified T : Any> ResourcePakkuPlugin.listen(
     order: PostOrder = PostOrder.NORMAL,
     noinline action: (T) -> Unit,
 ) {

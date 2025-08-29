@@ -1,11 +1,11 @@
-package cc.mewcraft.nekorp
+package cc.mewcraft.resourcepakku
 
-import cc.mewcraft.nekorp.config.NekoRpConfig
+import cc.mewcraft.resourcepakku.config.PluginConfig
 import com.aliyun.oss.OSS
 import com.aliyun.oss.OSSClientBuilder
 
 class OSSRequester(
-    config: NekoRpConfig
+    config: PluginConfig,
 ) {
     private val client: OSS = OSSClientBuilder().build(config.endpoint, config.accessKeyId, config.accessKeySecret)
 

@@ -1,6 +1,6 @@
-package cc.mewcraft.nekorp.command
+package cc.mewcraft.resourcepakku.command
 
-import cc.mewcraft.nekorp.plugin
+import cc.mewcraft.resourcepakku.plugin
 import com.velocitypowered.api.command.SimpleCommand
 import net.kyori.adventure.text.Component
 import kotlin.time.measureTime
@@ -8,7 +8,7 @@ import kotlin.time.measureTime
 class ReloadCommand : SimpleCommand {
     override fun execute(invocation: SimpleCommand.Invocation) {
         val source = invocation.source()
-        if (!source.hasPermission("nekorp.reload")) {
+        if (!source.hasPermission("resourcepakku.reload")) {
             source.sendMessage(Component.text("You do not have permission to use this command!"))
             return
         }
@@ -17,7 +17,7 @@ class ReloadCommand : SimpleCommand {
             plugin.reload()
         }
 
-        source.sendMessage(Component.text("NekoRp has been reloaded. Took ${measureTime}ms."))
+        source.sendMessage(Component.text("resourcepakku reloaded. Took ${measureTime}."))
     }
 
     override fun suggest(invocation: SimpleCommand.Invocation): List<String> {
@@ -25,6 +25,6 @@ class ReloadCommand : SimpleCommand {
     }
 
     override fun hasPermission(invocation: SimpleCommand.Invocation): Boolean {
-        return invocation.source().hasPermission("nekorp.reload")
+        return invocation.source().hasPermission("resourcepakku.reload")
     }
 }
