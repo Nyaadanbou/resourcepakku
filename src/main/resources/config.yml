@@ -9,7 +9,7 @@ services:
     # 从阿里云OSS生成的资源包预签名链接的过期时间 (秒).
     presigned_url_expire_seconds: 30
     # 从阿里云OSS生成新的资源包预签名链接的最小间隔 (秒).
-    new_presigned_url_interval: 30
+    new_presigned_url_interval_seconds: 30
   # 内置 HTTP 服务器.
   self_hosting:
     # 当为 true 时, 将启动一个 HTTP 服务器.
