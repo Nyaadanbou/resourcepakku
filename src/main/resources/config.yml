@@ -3,59 +3,84 @@ services:
   # 阿里云OSS. 注: 目前仅支持设置一套阿里云OSS的验证信息, 但支持在这套验证信息下访问任意的 Bucket (在 pack_infos 下定义).
   aliyun_oss:
     # 阿里云OSS的验证信息.
-    endpoint: "oss-cn-zhangjiakou.aliyuncs.com"
-    access_key_id: ""
-    access_key_secret: ""
+    endpoint: "oss-cn-shenzhen.aliyuncs.com"
+    access_key_id: "your_access_key_id"
+    access_key_secret: "your_access_key_secret"
     # 从阿里云OSS生成的资源包预签名链接的过期时间 (秒).
     presigned_url_expire_seconds: 30
     # 从阿里云OSS生成新的资源包预签名链接的最小间隔 (秒).
-    new_presigned_url_interval_seconds: 30
+    new_presigned_url_interval_seconds: 60
   # 内置 HTTP 服务器.
   self_hosting:
     # 当为 true 时, 将启动一个 HTTP 服务器.
-    enabled: false
-    # HTTP 服务器监听的地址.
-    host: "localhost"
-    port: 7390
+    enabled: true
+    # 发送给客户端的主机地址.
+    host: "play.mewcraft.cc"
+    # HTTP服务器监听的端口.
+    port: 7272
+    # 当为 true 时, 来自非 Minecraft 客户端的资源包请求将被拒绝.
+    valid_only: true
 
 # 定义好的*资源包信息*(类似 Adventure 中的 ResourcePackInfo).
 pack_infos:
   # 这一级 key 写*资源包信息*的唯一标识 (将在 default_pack_request 和 server_pack_requests 中被引用).
-  pack1:
+  pack1_ali:
     # type 为 "aliyun_oss" 则采用阿里云OSS作为分发方式.
     type: "aliyun_oss"
     # 阿里云OSS Bucket 的名字.
     bucket_name: "resrcpacks"
     # *资源包信息*的ID.
     id: "d5e65df7-c9b2-4922-be21-c21041d42f48"
-    # *资源包信息*的URI, 相对于阿里云OSS Bucket 的根目录.
-    uri: "assets/pack1.zip"
-  pack2:
+    # 资源包的文件路径, 相对于阿里云OSS Bucket 的根目录.
+    path: "assets/pack1.zip"
+  pack1_local:
     # type 为 "self_hosting" 则采用内置 HTTP 服务器作为分发方式.
     type: "self_hosting"
     # *资源包信息*的ID.
-    id: "d5e65df7-c9b2-4922-be21-c21041d42f48"
-    # *资源包信息*的URI, 相对于 `<插件数据文件夹>/webserver`.
-    uri: "assets/pack2.zip"
+    id: "b9575a41-028f-4ca3-aca2-ef9d4fb4f08d"
+    # *资源包的文件路径, 相对于 `<插件数据文件夹>/webserver`.
+    path: "assets/pack1.zip"
 
-# 默认的*资源包请求*(类似 Adventure 中的 ResourcePackRequest). 当一个服务器没有定义*资源包请求*时使用.
+  # 定义更多*资源包信息*
+  pack2_ali:
+    type: "aliyun_oss"
+    bucket_name: "resrcpacks"
+    id: "3711be56-9fd8-4de6-aa60-4e1de22e9c85"
+    path: "assets/pack2.zip"
+  pack3_ali:
+    type: "aliyun_oss"
+    bucket_name: "resrcpacks"
+    id: "0e458457-40bc-4468-909e-8769d140a1e0"
+    path: "assets/pack3.zip"
+  pack2_local:
+    type: "self_hosting"
+    id: "b1832d46-ea44-46f5-8107-24554de33579"
+    path: "assets/pack2.zip"
+  pack3_local:
+    type: "self_hosting"
+    id: "5ff31750-ec2f-493c-82f3-07bb668d6fa3"
+    path: "assets/pack3.zip"
+
+# 默认的*资源包请求*(类似 Adventure 中的 ResourcePackRequest).
+# 当一个服务器没有定义*资源包请求*时, 将使用默认的*资源包请求*.
 default_pack_request:
-  # 将要应用的*资源包信息*的列表 (必须已经在 pack_infos 中定义好). 可为空列表即 [].
-  packs: [ "pack1" ]
+  # 将要应用的*资源包信息*的列表 (必须已经在 pack_infos 中定义好). 可为空列表, 即不发送任何资源包.
+  packs: [ "pack1_local", "pack2_local", "pack3_ali" ]
   # 设置为 `true` 则客户端必须接受该资源包请求, 否则踢出服务器.
   force: true
   # (可省略) 发送给客户端的文字提示.
   prompt: "<yellow>You're receiving a default pack!"
 
 # 每个服务器对应的*资源包请求*.
+# 如果一个服务器没有定义*资源包请求*, 则使用 default_pack_request 下定义的*资源包请求*.
 server_pack_requests:
   # 这一级 key 写服务器名字 (定义在 velocity.toml -> servers).
   # 这一级 val 写*资源包请求*, 写法同 default_pack_request 下的内容.
   lobby1:
-    packs: [ "pack1" ]
+    packs: [ "pack1_ali" ]
     force: false
     prompt: "<yellow>You're receiving a pack for lobby1!"
   lobby2:
-    packs: [ "pack2" ]
+    packs: [ "pack1_local" ]
     force: true
     prompt: "<yellow>You're receiving a pack for lobby2!"
