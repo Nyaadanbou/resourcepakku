@@ -169,7 +169,7 @@ class ResourcePackController(
         val status = event.status
         val player = event.player
         val playerName = player.username
-        logger.info("{} responded `{}` to proxy-origin pack {}({})", playerName, status, packName, packId)
+        logger.info("$playerName responded `$status` to proxy-origin pack $packName($packId)")
 
         if (!status.isIntermediate) {
             val playerId = player.uniqueId
