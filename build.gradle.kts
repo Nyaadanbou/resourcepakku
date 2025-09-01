@@ -1,20 +1,26 @@
 plugins {
-    id("nekorp-conventions.commons")
-    id("nyaadanbou-conventions.repositories")
-    id("nyaadanbou-conventions.copy-jar")
+    id("resourcepakku-conventions.commons")
+    id("cc.mewcraft.libraries-repository")
+    id("cc.mewcraft.copy-jar-build")
+    id("cc.mewcraft.copy-jar-docker")
 }
 
 project.ext.set("name", "resourcepakku")
 
-group = "cc.mewcraft.nekorp"
+group = "cc.mewcraft.resourcepakku"
 version = "1.0.0"
 description = "A resourcepack distributor running on Velocity platform."
 
+repositories {
+    nyaadanbouReleases()
+    nyaadanbouPrivate()
+}
+
 dependencies {
-    compileOnly(local.velocity)
-    kapt(local.velocity)
+    compileOnly(local.velocity); kapt(local.velocity)
     implementation(platform(libs.bom.caffeine))
-    implementation(platform(libs.bom.configurate.kotlin))
+    implementation(platform(libs.bom.creative))
+    implementation(platform(libs.bom.configurate.extra.kotlin))
 
     // Aliyun OSS
     implementation("com.aliyun.oss:aliyun-sdk-oss:3.17.4") {
@@ -40,12 +46,21 @@ tasks {
             "javax.activation",
             "org.glassfish.jaxb"
         ).forEach {
-            relocate(it, "cc.mewcraft.nekorp.libs.$it")
+            relocate(it, "cc.mewcraft.resourcepakku.libs.$it")
         }
     }
+}
 
-    copyJar {
-        environment = "velocity"
-        jarFileName = "resourcepakku-${project.version}.jar"
-    }
+buildCopy {
+    fileName = "resourcepakku-${project.version}.jar"
+    archiveTask = "shadowJar"
+}
+
+dockerCopy {
+    containerId = "aether-minecraft-1"
+    containerPath = "/minecraft/proxy/plugins/"
+    fileMode = 0b110_100_100
+    userId = 999
+    groupId = 999
+    archiveTask = "shadowJar"
 }
