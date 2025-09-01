@@ -106,9 +106,9 @@ class ResourcePackController(
      * 关闭.
      */
     fun close() {
-        aliyunOssDistService.close()
-        selfHostingDistService.close()
         server.eventManager.unregisterListener(plugin, this)
+        selfHostingDistService.close()
+        aliyunOssDistService.close()
     }
 
     // 玩家连接到一个后端服务器之前, 计算资源包的更改并暂存, 延迟到 configuration phase 应用
