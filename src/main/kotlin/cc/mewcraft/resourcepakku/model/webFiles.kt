@@ -1,4 +1,4 @@
-package cc.mewcraft.resourcepakku.object2
+package cc.mewcraft.resourcepakku.model
 
 import cc.mewcraft.resourcepakku.logger
 import cc.mewcraft.resourcepakku.plugin

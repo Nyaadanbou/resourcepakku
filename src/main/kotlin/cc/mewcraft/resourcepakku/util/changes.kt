@@ -1,6 +1,6 @@
 package cc.mewcraft.resourcepakku.util
 
-import cc.mewcraft.resourcepakku.object2.PackInfo
+import cc.mewcraft.resourcepakku.model.PackInfo
 
 /**
  * 代表将要给玩家应用的资源包更改结果, 即最终要添加和移除的资源包.

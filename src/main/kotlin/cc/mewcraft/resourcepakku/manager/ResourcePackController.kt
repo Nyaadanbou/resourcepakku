@@ -1,7 +1,7 @@
 package cc.mewcraft.resourcepakku.manager
 
 import cc.mewcraft.resourcepakku.logger
-import cc.mewcraft.resourcepakku.object2.*
+import cc.mewcraft.resourcepakku.model.*
 import cc.mewcraft.resourcepakku.plugin
 import cc.mewcraft.resourcepakku.server
 import cc.mewcraft.resourcepakku.util.ResourcePackChanges

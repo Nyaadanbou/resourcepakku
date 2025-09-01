@@ -1,6 +1,6 @@
 package cc.mewcraft.resourcepakku.serializer
 
-import cc.mewcraft.resourcepakku.object2.*
+import cc.mewcraft.resourcepakku.model.*
 import cc.mewcraft.resourcepakku.util.representationHint
 import cc.mewcraft.resourcepakku.util.require
 import org.spongepowered.configurate.ConfigurationNode

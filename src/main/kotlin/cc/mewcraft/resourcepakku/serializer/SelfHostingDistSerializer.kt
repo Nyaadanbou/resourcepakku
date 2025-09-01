@@ -1,6 +1,6 @@
 package cc.mewcraft.resourcepakku.serializer
 
-import cc.mewcraft.resourcepakku.object2.SelfHostingDistService
+import cc.mewcraft.resourcepakku.model.SelfHostingDistService
 import cc.mewcraft.resourcepakku.plugin
 import cc.mewcraft.resourcepakku.util.require
 import org.spongepowered.configurate.ConfigurationNode

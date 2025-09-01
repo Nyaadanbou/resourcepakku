@@ -1,7 +1,7 @@
 package cc.mewcraft.resourcepakku.serializer
 
 import cc.mewcraft.resourcepakku.logger
-import cc.mewcraft.resourcepakku.object2.PackRequest
+import cc.mewcraft.resourcepakku.model.PackRequest
 import cc.mewcraft.resourcepakku.util.require
 import net.kyori.adventure.text.Component
 import org.spongepowered.configurate.ConfigurationNode

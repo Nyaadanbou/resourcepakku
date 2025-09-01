@@ -2,8 +2,8 @@ package cc.mewcraft.resourcepakku
 
 import cc.mewcraft.resourcepakku.command.DispatchCommand
 import cc.mewcraft.resourcepakku.manager.ResourcePackController
-import cc.mewcraft.resourcepakku.object2.PluginConfig
-import cc.mewcraft.resourcepakku.object2.WebFiles
+import cc.mewcraft.resourcepakku.model.PluginConfig
+import cc.mewcraft.resourcepakku.model.WebFiles
 import com.google.inject.Inject
 import com.velocitypowered.api.event.PostOrder
 import com.velocitypowered.api.event.Subscribe
