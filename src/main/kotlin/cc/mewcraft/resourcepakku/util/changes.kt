@@ -36,42 +36,50 @@ sealed interface ResourcePackChanges {
             // 实际上要移除的资源包
             val finalToRemove = preApplied.filter { it !in preToApply }
 
-            return Normal(finalToApply, finalToRemove)
+            return Normal(preToApply, finalToApply, finalToRemove)
         }
     }
 
     /**
+     * 计划要添加的资源包列表.
+     */
+    val preToAdd: List<PackInfo>
+
+    /**
      * 最终要添加的资源包列表.
      */
-    val toAdd: List<PackInfo>
+    val finalToAdd: List<PackInfo>
 
     /**
      * 最终要移除的资源包列表.
      */
-    val toRemove: List<PackInfo>
+    val finalToRemove: List<PackInfo>
 
     /**
      * 这种情况下, 不需要执行任何操作.
      */
     data object NoOp : ResourcePackChanges {
-        override val toAdd: List<PackInfo> get() = throw UnsupportedOperationException()
-        override val toRemove: List<PackInfo> get() = throw UnsupportedOperationException()
+        override val preToAdd: List<PackInfo> get() = throw UnsupportedOperationException()
+        override val finalToAdd: List<PackInfo> get() = throw UnsupportedOperationException()
+        override val finalToRemove: List<PackInfo> get() = throw UnsupportedOperationException()
     }
 
     /**
      * 这种情况下, 所有已经应用的资源包都将被移除.
      */
     data object Clear : ResourcePackChanges {
-        override val toAdd: List<PackInfo> get() = throw UnsupportedOperationException()
-        override val toRemove: List<PackInfo> get() = throw UnsupportedOperationException()
+        override val preToAdd: List<PackInfo> get() = throw UnsupportedOperationException()
+        override val finalToAdd: List<PackInfo> get() = throw UnsupportedOperationException()
+        override val finalToRemove: List<PackInfo> get() = throw UnsupportedOperationException()
     }
 
     /**
      * 这种情况下, 需要添加和移除一些资源包.
      */
     data class Normal(
-        override val toAdd: List<PackInfo>,
-        override val toRemove: List<PackInfo>,
+        override val preToAdd: List<PackInfo>,
+        override val finalToAdd: List<PackInfo>,
+        override val finalToRemove: List<PackInfo>,
     ) : ResourcePackChanges {
         //init {
         //    require(toAdd.isNotEmpty() && toRemove.isNotEmpty()) { "toAdd and toRemove cannot be empty at the same time" }

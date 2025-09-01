@@ -20,6 +20,8 @@ import net.kyori.adventure.text.Component
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import com.velocitypowered.api.event.player.PlayerResourcePackStatusEvent.Status as PackStatus
 
 /**
  * 包含了分发资源包的逻辑.
@@ -70,11 +72,18 @@ class ResourcePackController(
     private val queuedPackChanges: ConcurrentHashMap<UUID, ResourcePackChanges> = ConcurrentHashMap()
 
     /**
-     * - row key: player unique id
-     * - col key: resource pack unique id
+     * - row key: player id
+     * - col key: pack id
+     * - value: the target status that the player must respond with to resume the corresponding future
+     */
+    private val queuedTargetStatus: Table<UUID, UUID, PackStatus> = Tables.newCustomTable(ConcurrentHashMap()) { ConcurrentHashMap() }
+
+    /**
+     * - row key: player id
+     * - col key: pack id
      * - value: a future that will be completed when the player has successfully applied the pack
      */
-    private val queuedResumeSignals: Table<UUID, UUID, CompletableFuture<ResumeSignal>> = Tables.newCustomTable(ConcurrentHashMap()) { ConcurrentHashMap() }
+    private val queuedResumeSignals: Table<UUID, UUID, CompletableFuture<Unit>> = Tables.newCustomTable(ConcurrentHashMap()) { ConcurrentHashMap() }
 
     companion object {
 
@@ -147,7 +156,7 @@ class ResourcePackController(
             }
 
             is ResourcePackChanges.Normal -> {
-                logger.info("Scheduled to add/remove packs for ${player.username}(${player.uniqueId}) when connecting to $targetServerName: +[${resourcePackChanges.toAdd.joinToString { it.name.toString() }}], -[${resourcePackChanges.toRemove.joinToString { it.name.toString() }}]")
+                logger.info("Scheduled to add/remove packs for ${player.username}(${player.uniqueId}) when connecting to $targetServerName: +[${resourcePackChanges.finalToAdd.joinToString { it.name.toString() }}], -[${resourcePackChanges.finalToRemove.joinToString { it.name.toString() }}]")
             }
         }
 
@@ -158,40 +167,48 @@ class ResourcePackController(
     // 根据玩家发送给服务端的资源包状态事件, complete 对应的 future
     @Subscribe(order = PostOrder.LAST)
     private fun onPlayerResourcePackStatus(event: PlayerResourcePackStatusEvent) {
-        val packId = event.packId ?: return
-        val packInfo = event.packInfo ?: return
-        if (packInfo.origin != ResourcePackInfo.Origin.PLUGIN_ON_PROXY) {
-            logger.info("Skipping non-proxy-origin pack status event (pack: ${event.packId.toString()})")
+        val player = event.player
+        val playerName = player.username
+
+        // 经实际测试:
+        // packId 似乎没有为 null 的时候
+        // packInfo 当玩家已经安装了某个资源包 *并且* 服务器先前没有显式的发送 ResourcePackRequest 时为 null
+        val packId = event.packId ?: run {
+            logger.info("No resource pack has been found for $event")
             return
         }
 
-        val packName = packInfoById[packId]?.name ?: "unknown"
         val status = event.status
-        val player = event.player
-        val playerName = player.username
-        logger.info("$playerName responded `$status` to proxy-origin pack $packName($packId)")
+        val packName = packInfoById[packId]?.name ?: "unknown"
+        logger.info("$playerName responded to $packName($packId) with status `$status`")
 
         if (!status.isIntermediate) {
             val playerId = player.uniqueId
-            val resumeSignalFuture = queuedResumeSignals.remove(playerId, packId)
-            if (resumeSignalFuture != null) {
-                if (status == PlayerResourcePackStatusEvent.Status.SUCCESSFUL) {
-                    resumeSignalFuture.complete(ResumeSignal(packId, status))
+            val targetStatus = queuedTargetStatus.remove(playerId, packId)
+            if (targetStatus != null && status == targetStatus) {
+                val signal = queuedResumeSignals.remove(playerId, packId)
+                if (signal != null) {
+                    signal.complete(Unit)
+                    logger.info("$playerName resumed signal for $packName($packId) with status `$status`")
                 } else {
-                    player.disconnect(Component.text("Error applying resource pack"))
+                    logger.error("No signal found for $playerName and pack $packName($packId)")
                 }
+            } else {
+                logger.warn("Unexpected status `$status` from $playerName for pack $packName($packId), expected `$targetStatus`")
+                player.disconnect(Component.text("Error applying resource pack"))
             }
         }
     }
 
-    // 如果玩家正在接收资源包, 断开连接则标记玩家没有接受资源包
+    // 玩家断开连接时, 清理所有与该玩家相关的暂存数据
     @Subscribe
     private fun onDisconnect(event: DisconnectEvent) {
         val player = event.player
         val playerId = player.uniqueId
         queuedPackChanges.remove(playerId)
-        queuedResumeSignals.rowMap().remove(playerId)?.forEach { (packId: UUID, signalFuture: CompletableFuture<ResumeSignal>) ->
-            signalFuture.complete(ResumeSignal(packId, PlayerResourcePackStatusEvent.Status.DISCARDED))
+        queuedTargetStatus.rowMap().remove(playerId)
+        queuedResumeSignals.rowMap().remove(playerId)?.forEach { (packId: UUID, signal: CompletableFuture<Unit>) ->
+            signal.complete(Unit)
         }
     }
 
@@ -199,18 +216,18 @@ class ResourcePackController(
     // 该函数 return null = 让 velocity 继续该事件
     @Subscribe
     private fun onPlayerConfiguration(event: PlayerConfigurationEvent): EventTask? {
-        val server = event.server
-        val serverName = server.serverInfo.name
+        val serverConn = event.server
+        val serverName = serverConn.serverInfo.name
         val player = event.player
         val playerId = player.uniqueId
         val playerIp = player.remoteAddress.address
         val playerName = player.username
-        val resourcePackChanges = queuedPackChanges.remove(playerId) ?: run {
-            logger.warn("No queued changes for $playerName($playerId)")
+        val packChanges = queuedPackChanges.remove(playerId) ?: run {
+            logger.warn("No queued changes for $playerName")
             return null
         }
 
-        when (resourcePackChanges) {
+        when (packChanges) {
             is ResourcePackChanges.NoOp -> {
                 logger.error("NoOp should not be here", IllegalStateException())
                 return null
@@ -226,46 +243,58 @@ class ResourcePackController(
             }
 
             is ResourcePackChanges.Normal -> {
-                logger.info("Applying packs to ${player.username}(${player.uniqueId}) when configuring for $serverName")
+                logger.info("Applying pack changes to ${player.username}(${player.uniqueId}) when configuring for $serverName")
 
-                // 移除资源包
-                if (resourcePackChanges.toRemove.isNotEmpty()) {
-                    val toRemovePackIdList = resourcePackChanges.toRemove.map { it.id }
-                    // 移除资源包只需要指定 id
-                    player.removeResourcePacks(toRemovePackIdList)
+                val finalToRemovePackIdList = packChanges.finalToRemove.map { it.id } // 提示: 移除资源包只需要指定 id
+                //val toRemovePackInfoFutures = packChanges.finalToRemove.map { it.generateResourcePackInfo(playerId, playerIp) }
+
+                val preToAddPackIdList = packChanges.preToAdd.map { it.id }
+                //val finalToAddPackIdList = packChanges.finalToAdd.map { it.id }
+                val finalToAddPackInfoFutures = packChanges.finalToAdd.map { it.generateResourcePackInfo(playerId, playerIp) } // 提示: 添加资源包需要完整的 ResourcePackInfo
+
+                // 为每个要添加/移除的资源包创建一个 future, 并存储在 queuedResumeSignals 里
+                // 这些 CompletableFutures 会在玩家向服务器发送资源包状态时被 complete
+                //finalToRemovePackIdList.forEach { packId ->
+                //    queuedTargetStatus.put(playerId, packId, PackStatus.DISCARDED) // 让客户端移除资源包, 并不会触发 PlayerResourcePackStatusEvent, 所以也没有必要等待
+                //    queuedResumeSignals.put(playerId, packId, CompletableFuture())
+                //}
+                preToAddPackIdList.forEach { packId ->
+                    queuedTargetStatus.put(playerId, packId, PackStatus.SUCCESSFUL)
+                    queuedResumeSignals.put(playerId, packId, CompletableFuture())
                 }
 
-                // 添加资源包
-                if (resourcePackChanges.toAdd.isNotEmpty()) {
-                    val toAddAdvtPackInfoFutList = resourcePackChanges.toAdd.map { it.generateResourcePackInfo(playerId, playerIp) }
-                    // 添加资源包需要完整的 ResourcePackInfo
-                    CompletableFuture
-                        // 等待所有的 ResourcePackInfo 都生成完毕
-                        .allOf(*toAddAdvtPackInfoFutList.toTypedArray())
-                        // 生成完毕后, 构建 ResourcePackRequest
-                        .thenApply {
-                            val internalPackRequest = serverPackRequestMap.get(serverName) ?: defaultPackRequest
-                            val adventurePackInfoList = toAddAdvtPackInfoFutList.map { it.resultNow() }
-                            val adventurePackRequest = ResourcePackRequest.resourcePackRequest()
-                                .packs(adventurePackInfoList)
-                                .prompt(internalPackRequest.prompt)
-                                .required(internalPackRequest.force)
-                                .replace(true)
-                                .build()
-                            adventurePackRequest
-                        }
-                        // 将构建的 ResourcePackRequest 发送给玩家
-                        .thenAccept {
-                            player.sendResourcePacks(it)
-                        }
-
-                    // 为每个要添加的资源包创建一个 future, 并存储在 queuedResumeSignals 里
-                    // 这些 CompletableFutures 会在玩家向服务器发送资源包状态时被 complete
-                    val toAddPackIdList = resourcePackChanges.toAdd.map { it.id }
-                    for (packId in toAddPackIdList) {
-                        queuedResumeSignals.put(playerId, packId, CompletableFuture())
+                CompletableFuture
+                    // 等待所有需要添加的 ResourcePackInfo 都生成完毕
+                    .allOf(*finalToAddPackInfoFutures.toTypedArray())
+                    // 生成完毕后, 构建 ResourcePackRequest
+                    .thenApply { x ->
+                        val internalPackRequest = serverPackRequestMap.get(serverName) ?: defaultPackRequest
+                        val adventurePackInfoList = finalToAddPackInfoFutures.map { it.resultNow() }
+                        val adventurePackRequest = ResourcePackRequest.resourcePackRequest()
+                            .packs(adventurePackInfoList)
+                            .prompt(internalPackRequest.prompt)
+                            .required(internalPackRequest.force)
+                            .replace(true)
+                            .build()
+                        adventurePackRequest
                     }
-                }
+                    // 将构建的 ResourcePackRequest 发送给玩家
+                    // 与此同时, 移除不需要的资源包
+                    .thenAccept({ request ->
+                        // Velocity 有个 BUG:
+                        // 如果在玩家切换服务器时进入 configuration phase 后立马发送资源包, 会直接卡住, 客户端也不会收到资源包提示,
+                        // 所以这里延迟 1 秒再向客户端发送资源包请求 (添加/移除)
+                        server.scheduler
+                            .buildTask(plugin, Runnable {
+                                logger.info("Removing packs from $playerName: [${packChanges.finalToRemove.joinToString { info -> info.name.toString() }}]")
+                                player.removeResourcePacks(finalToRemovePackIdList)
+                                logger.info("Sending packs to ${playerName}: [${packChanges.finalToAdd.joinToString { info -> info.name.toString() }}]")
+                                player.sendResourcePacks(request)
+                            })
+                            .delay(1, TimeUnit.SECONDS)
+                            .schedule()
+                    })
+
                 val relevantSignalFutures = queuedResumeSignals.row(playerId).values
                 val allOfRelevantSignalFutures = CompletableFuture.allOf(*relevantSignalFutures.toTypedArray())
                 return EventTask.resumeWhenComplete(allOfRelevantSignalFutures)
@@ -273,8 +302,3 @@ class ResourcePackController(
         }
     }
 }
-
-private data class ResumeSignal(
-    val packId: UUID?,
-    val packStatus: PlayerResourcePackStatusEvent.Status,
-)
