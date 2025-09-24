@@ -20,6 +20,9 @@ services:
     port: 7272
     # 当为 true 时, 来自非 Minecraft 客户端的资源包请求将被拒绝.
     valid_only: true
+    # HTTP 服务器的根目录. 省略则为 `<插件数据文件夹>/webserver`, 否则将采用这里指定的路径.
+    # 此配置项可以暴露操作系统上的任意文件夹 (只要 JVM 有读取权限), 因此请注意系统安全风险!
+    # web_root: "/path/to/some/pack/output/dir"
 
 # 定义好的*资源包信息*(类似 Adventure 中的 ResourcePackInfo).
 pack_infos:
@@ -27,10 +30,10 @@ pack_infos:
   pack1_ali:
     # type 为 "aliyun_oss" 则采用阿里云OSS作为分发方式.
     type: "aliyun_oss"
-    # 阿里云OSS Bucket 的名字.
-    bucket_name: "resrcpacks"
     # *资源包信息*的ID.
     id: "d5e65df7-c9b2-4922-be21-c21041d42f48"
+    # 阿里云OSS Bucket 的名字.
+    bucket_name: "resrcpacks"
     # 资源包的文件路径, 相对于阿里云OSS Bucket 的根目录.
     path: "assets/pack1.zip"
   pack1_local:
@@ -38,7 +41,7 @@ pack_infos:
     type: "self_hosting"
     # *资源包信息*的ID.
     id: "b9575a41-028f-4ca3-aca2-ef9d4fb4f08d"
-    # *资源包的文件路径, 相对于 `<插件数据文件夹>/webserver`.
+    # *资源包的文件路径, 相对于 services.self_hosting.web_root.
     path: "assets/pack1.zip"
 
   # 定义更多*资源包信息*

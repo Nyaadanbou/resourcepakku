@@ -4,8 +4,10 @@ import cc.mewcraft.resourcepakku.model.SelfHostingDistService
 import cc.mewcraft.resourcepakku.plugin
 import cc.mewcraft.resourcepakku.util.require
 import org.spongepowered.configurate.ConfigurationNode
+import org.spongepowered.configurate.kotlin.extensions.get
 import org.spongepowered.configurate.serialize.TypeSerializer
 import java.lang.reflect.Type
+import java.nio.file.Path
 
 object SelfHostingDistSerializer : TypeSerializer<SelfHostingDistService> {
 
@@ -14,7 +16,7 @@ object SelfHostingDistSerializer : TypeSerializer<SelfHostingDistService> {
         val host = node.node("host").require<String>()
         val port = node.node("port").require<Int>()
         val validOnly = node.node("valid_only").require<Boolean>()
-        val rootPath = plugin.dataDirectory.resolve("webserver") // TODO configurable?
+        val rootPath = node.node("web_root").get<Path>(plugin.dataDirectory.resolve("webserver"))
 
         return SelfHostingDistService(
             enabled = enabled,

@@ -87,6 +87,9 @@ class ResourcePackController(
 
     companion object {
 
+        @JvmField
+        val ERR_PACK_MESSAGE: Component = Component.text("Error applying resource pack")
+
         @JvmStatic
         fun fromPluginConfig(
             config: PluginConfig,
@@ -195,7 +198,7 @@ class ResourcePackController(
                 }
             } else {
                 logger.warn("Unexpected status `$status` from $playerName for pack $packName($packId), expected `$targetStatus`")
-                player.disconnect(Component.text("Error applying resource pack"))
+                player.disconnect(ERR_PACK_MESSAGE)
             }
         }
     }
@@ -294,6 +297,11 @@ class ResourcePackController(
                             .delay(1, TimeUnit.SECONDS)
                             .schedule()
                     })
+                    .exceptionally { ex ->
+                        logger.error("Failed to apply resource pack changes to $playerName", ex)
+                        player.disconnect(ERR_PACK_MESSAGE)
+                        null
+                    }
 
                 val relevantSignalFutures = queuedResumeSignals.row(playerId).values
                 val allOfRelevantSignalFutures = CompletableFuture.allOf(*relevantSignalFutures.toTypedArray())
