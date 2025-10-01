@@ -6,7 +6,8 @@ import net.kyori.adventure.text.Component
 class DispatchCommand : SimpleCommand {
 
     private val subcommands: Map<String, SimpleCommand> = mapOf(
-        "reload" to ReloadCommand()
+        "reload" to ReloadCommand(),
+        "resend" to ResendCommand()
     )
 
     override fun execute(invocation: SimpleCommand.Invocation) {

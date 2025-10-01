@@ -43,8 +43,10 @@ class ResourcePakku
     @param:DataDirectory
     val dataDirectory: Path,
 ) {
-    private lateinit var pluginConfig: PluginConfig
-    private lateinit var packController: ResourcePackController
+    lateinit var pluginConfig: PluginConfig
+        private set
+    lateinit var packController: ResourcePackController
+        private set
 
     inline fun <reified T : Any> listen(order: PostOrder = PostOrder.NORMAL, noinline action: (T) -> Unit) {
         server.eventManager.register(this, T::class.java, order, action)

@@ -21,6 +21,7 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.jvm.optionals.getOrNull
 import com.velocitypowered.api.event.player.PlayerResourcePackStatusEvent.Status as PackStatus
 
 /**
@@ -123,6 +124,67 @@ class ResourcePackController(
         aliyunOssDistService.close()
     }
 
+    /**
+     * 重新向客户端发送资源包.
+     */
+    fun resend(): CompletableFuture<Void> {
+        val futures = mutableListOf<CompletableFuture<Void>>()
+
+        for (player in server.allPlayers) {
+            val playerName = player.username
+            val playerId = player.uniqueId
+
+            logger.info("Clearing all packs for $playerName($playerId)")
+
+            // 仅移除由本插件管理的资源包
+            val allKnownPackIds = packInfoById.values.map { it.id }
+            // 移除资源包只需要指定 id
+            player.removeResourcePacks(allKnownPackIds)
+
+            val targetServerName = player.currentServer.getOrNull()?.server?.serverInfo?.name ?: continue
+            val targetServerPackRequest = serverPackRequestMap[targetServerName] ?: defaultPackRequest
+
+            // 计划上需要应用的资源包 (也就是配置文件里写的是什么, 这里就是什么)
+            val toApply = targetServerPackRequest.packs
+
+            // 计算得到 ResourcePackInfo 对象以切实发送给客户端
+            val finalToAddPackInfoFutures = toApply.map { packInfo ->
+                packInfo.generateResourcePackInfo(playerId, player.remoteAddress.address)
+            }
+
+            val future = CompletableFuture
+                // 等待所有需要添加的 ResourcePackInfo 都生成完毕
+                .allOf(*finalToAddPackInfoFutures.toTypedArray())
+                // 生成完毕后, 构建 ResourcePackRequest
+                .thenApply {
+                    val internalPackRequest = serverPackRequestMap.get(targetServerName) ?: defaultPackRequest
+                    val adventurePackInfoList = finalToAddPackInfoFutures.map { it.resultNow() }
+                    val adventurePackRequest = ResourcePackRequest.resourcePackRequest()
+                        .packs(adventurePackInfoList)
+                        .prompt(internalPackRequest.prompt)
+                        .required(internalPackRequest.force)
+                        .replace(true)
+                        .build()
+                    adventurePackRequest
+                }
+                // 将构建的 ResourcePackRequest 发送给玩家
+                // 与此同时, 移除不需要的资源包
+                .thenAccept { request ->
+                    logger.info("Resending packs to ${playerName}: [${toApply.joinToString { info -> info.name.toString() }}]")
+                    player.sendResourcePacks(request)
+                }
+                .exceptionally { ex ->
+                    logger.error("Failed to apply resource pack changes to $playerName", ex)
+                    player.disconnect(ERR_PACK_MESSAGE)
+                    null
+                }
+
+            futures += future
+        }
+
+        return CompletableFuture.allOf(*futures.toTypedArray())
+    }
+
     // 玩家连接到一个后端服务器之前, 计算资源包的更改并暂存, 延迟到 configuration phase 应用
     @Subscribe(order = PostOrder.LAST)
     private fun onServerPreConnect(event: ServerPreConnectEvent) {
@@ -188,17 +250,21 @@ class ResourcePackController(
         if (!status.isIntermediate) {
             val playerId = player.uniqueId
             val targetStatus = queuedTargetStatus.remove(playerId, packId)
-            if (targetStatus != null && status == targetStatus) {
-                val signal = queuedResumeSignals.remove(playerId, packId)
-                if (signal != null) {
-                    signal.complete(Unit)
-                    logger.info("$playerName resumed signal for $packName($packId) with status `$status`")
+            if (targetStatus != null) {
+                if (status == targetStatus) {
+                    val signal = queuedResumeSignals.remove(playerId, packId)
+                    if (signal != null) {
+                        signal.complete(Unit)
+                        logger.info("$playerName resumed signal for $packName($packId) with status `$status`")
+                    } else {
+                        logger.error("No signal found for $playerName and pack $packName($packId)")
+                    }
                 } else {
-                    logger.error("No signal found for $playerName and pack $packName($packId)")
+                    logger.warn("Unexpected status `$status` from $playerName for pack $packName($packId), expected `$targetStatus`")
+                    player.disconnect(ERR_PACK_MESSAGE)
                 }
             } else {
-                logger.warn("Unexpected status `$status` from $playerName for pack $packName($packId), expected `$targetStatus`")
-                player.disconnect(ERR_PACK_MESSAGE)
+                // 我们似乎可以直接忽略掉为 null 的情况 (有问题再说?)
             }
         }
     }
